@@ -13,7 +13,8 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class MouseMixin {
    @WrapOperation(
       method = "updateMouse",
-      at = @At(value = "INVOKE", target = "Lnet/minecraft/client/network/ClientPlayerEntity;changeLookDirection(DD)V")
+      at = @At(value = "INVOKE", target = "Lnet/minecraft/client/network/ClientPlayerEntity;changeLookDirection(DD)V"),
+      require = 0
    )
    private void killclip$look(ClientPlayerEntity player, double dx, double dy, Operation<Void> original) {
       ReplayPlayer replay = ReplayPlayer.active();

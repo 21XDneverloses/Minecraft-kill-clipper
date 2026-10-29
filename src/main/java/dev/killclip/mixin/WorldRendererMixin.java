@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class WorldRendererMixin {
    @ModifyExpressionValue(
       method = "fillEntityRenderStates",
-      at = @At(value = "CONSTANT", args = "classValue=net/minecraft/client/network/ClientPlayerEntity")
+      at = @At(value = "CONSTANT", args = "classValue=net/minecraft/client/network/ClientPlayerEntity"),
+      require = 0
    )
    private boolean killclip$showRecordedPlayer(boolean isLocalPlayer) {
       return isLocalPlayer && !ReplayPlayer.playing();

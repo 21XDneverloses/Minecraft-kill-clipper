@@ -42,7 +42,20 @@ public final class ReplayBuffer implements AutoCloseable {
    public static final int AUDIO_FRAME_BYTES = 4;
    private static final int AUDIO_BACKLOG_FRAMES = AUDIO_RATE / 4;
 
-   private record Frame(byte[] pixels, int copies) {
+   /**
+    * One frame to send: either a pooled array, or memory the caller owns (a mapped GPU buffer) with {@code done}
+    * run once it has been sent or dropped.
+    */
+   private record Frame(byte[] pixels, java.nio.ByteBuffer direct, Runnable done, int copies) {
+      Frame(byte[] pixels, int copies) {
+         this(pixels, null, null, copies);
+      }
+
+      void finish() {
+         if (this.done != null) {
+            this.done.run();
+         }
+      }
    }
 
    private static final int QUEUE_FRAMES = 4;
@@ -61,6 +74,7 @@ public final class ReplayBuffer implements AutoCloseable {
    private final BlockingQueue<Frame> queue = new ArrayBlockingQueue<>(QUEUE_FRAMES);
    private final BlockingQueue<byte[]> free = new ArrayBlockingQueue<>(QUEUE_FRAMES + 2);
    private final AtomicInteger carry = new AtomicInteger();
+   private final AtomicInteger arrays = new AtomicInteger();
    /** First segment of each clip being saved, with a count, so pruning never deletes what a pending save needs. */
    private final java.util.concurrent.ConcurrentSkipListMap<Long, Integer> pinned = new java.util.concurrent.ConcurrentSkipListMap<>();
    private final ExecutorService saver = Executors.newSingleThreadExecutor(r -> daemon(r, "killclip-save"));
@@ -108,10 +122,6 @@ public final class ReplayBuffer implements AutoCloseable {
       this.ffmpeg = builder.start();
       ProcessPriority.lower(this.ffmpeg);
       this.ffmpeg.getOutputStream().close();
-      for (int i = 0; i < QUEUE_FRAMES + 2; i++) {
-         this.free.add(new byte[this.frameBytes]);
-      }
-
       this.writer = daemon(this::writeLoop, "killclip-encoder");
       this.writer.start();
    }
@@ -227,8 +237,15 @@ public final class ReplayBuffer implements AutoCloseable {
    }
 
    /** A free pixel buffer for the next frame, or null when the encoder is behind. */
+   /** A frame array to fill, or null when all are queued. Arrays are made on first use: the game's zero-copy path never needs them. */
    public byte[] borrow() {
-      return this.free.poll();
+      byte[] pixels = this.free.poll();
+      if (pixels == null && this.arrays.get() < QUEUE_FRAMES + 2) {
+         this.arrays.incrementAndGet();
+         pixels = new byte[this.frameBytes];
+      }
+
+      return pixels;
    }
 
    /** Share of written frames that repeat the previous one because capture fell behind (choppiness). */
@@ -251,6 +268,21 @@ public final class ReplayBuffer implements AutoCloseable {
    }
 
    /** Frames that were claimed but could not be captured; they repeat the next submitted frame. */
+   /**
+    * Queues a frame straight from memory the caller owns, so the game thread never copies it; the encoder thread
+    * reads it and then runs {@code done}. Returns false (and runs {@code done}) when the frame was dropped.
+    */
+   public boolean submitDirect(java.nio.ByteBuffer data, int copies, Runnable done) {
+      int total = copies + this.carry.getAndSet(0);
+      if (this.closed || data.remaining() < this.frameBytes || !this.queue.offer(new Frame(null, data, done, total))) {
+         this.carry.addAndGet(total);
+         done.run();
+         return false;
+      }
+
+      return true;
+   }
+
    public void skip(int copies, byte[] unused) {
       this.carry.addAndGet(copies);
       if (unused != null) {
@@ -339,14 +371,32 @@ public final class ReplayBuffer implements AutoCloseable {
          socket.setTcpNoDelay(true);
          this.videoSocket = socket;
          OutputStream out = socket.getOutputStream();
+         byte[] chunk = new byte[1 << 18];
          while (!this.closed) {
             Frame frame = this.queue.poll(250L, TimeUnit.MILLISECONDS);
             if (frame != null) {
-               out.write(frame.pixels(), 0, this.frameBytes);
+               try {
+                  if (frame.direct() != null) {
+                     java.nio.ByteBuffer data = frame.direct();
+                     int start = data.position();
+                     for (int offset = 0; offset < this.frameBytes; offset += chunk.length) {
+                        int length = Math.min(chunk.length, this.frameBytes - offset);
+                        data.get(start + offset, chunk, 0, length);
+                        out.write(chunk, 0, length);
+                     }
+                  } else {
+                     out.write(frame.pixels(), 0, this.frameBytes);
+                  }
+               } finally {
+                  frame.finish();
+               }
+
                // The timeline still advances by every claimed frame, so segments stay in step with real time.
                this.framesWritten += frame.copies();
                this.framesRepeated += frame.copies() - 1;
-               this.free.offer(frame.pixels());
+               if (frame.pixels() != null) {
+                  this.free.offer(frame.pixels());
+               }
             }
 
             long segment = this.currentSegment();
@@ -505,6 +555,11 @@ public final class ReplayBuffer implements AutoCloseable {
       } catch (InterruptedException ignored) {
       }
 
+      // Hand back any GPU buffers still waiting to be sent.
+      for (Frame frame = this.queue.poll(); frame != null; frame = this.queue.poll()) {
+         frame.finish();
+      }
+
       try {
          Socket socket = this.videoSocket;
          if (socket != null) {
@@ -521,6 +576,10 @@ public final class ReplayBuffer implements AutoCloseable {
          }
       } catch (InterruptedException e) {
          this.ffmpeg.destroyForcibly();
+      }
+
+      for (Frame frame = this.queue.poll(); frame != null; frame = this.queue.poll()) {
+         frame.finish();
       }
 
       // Let a clip that is already being stitched finish before the segments go away.

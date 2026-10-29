@@ -59,6 +59,10 @@ public final class ClipRecorder {
    /** Readback buffers reused across frames; allocating an 8 MB GPU buffer every frame causes stutter. */
    private final ArrayDeque<GpuBuffer> readbacks = new ArrayDeque<>();
    private long readbackSize;
+   /** Readbacks the encoder thread has finished with; unmapping must happen on the render thread. */
+   private final java.util.concurrent.ConcurrentLinkedQueue<Runnable> sent = new java.util.concurrent.ConcurrentLinkedQueue<>();
+   private int inFlight;
+   private static final int MAX_IN_FLIGHT = 8;
    /** Whether the GPU colour conversion works here: null until checked, false after it failed once. */
    private Boolean gpuConvert = Boolean.getBoolean("killclip.cpuConvert") ? Boolean.FALSE : null;
    private GpuTexture nv12Texture;
@@ -131,6 +135,10 @@ public final class ClipRecorder {
 
    /** Called on the render thread after every frame. */
    public void onFrameRendered(MinecraftClient client, ClipConfig config, long nowMs) {
+      for (Runnable done = this.sent.poll(); done != null; done = this.sent.poll()) {
+         done.run();
+      }
+
       if (!config.recording) {
          this.stop();
          return;
@@ -198,8 +206,8 @@ public final class ClipRecorder {
          return;
       }
 
-      byte[] pixels = target.borrow();
-      if (pixels == null) {
+      if (this.inFlight >= MAX_IN_FLIGHT) {
+         // The encoder is behind; drop this frame rather than make the game wait.
          target.skip(due, null);
          return;
       }
@@ -211,6 +219,7 @@ public final class ClipRecorder {
          this.readbackSize = size;
       }
 
+      this.inFlight++;
       GpuBuffer pooled = this.readbacks.poll();
       GpuBuffer readback = pooled != null ? pooled : device.createBuffer(() -> "KillClip frame", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, size);
       CommandEncoder encoder = device.createCommandEncoder();
@@ -222,25 +231,25 @@ public final class ClipRecorder {
             KillClipperClient.LOGGER.warn("GPU colour conversion failed; converting on the CPU instead", e);
             this.gpuConvert = Boolean.FALSE;
             readback.close();
-            target.skip(due, pixels);
+            this.inFlight--;
+            target.skip(due, null);
             this.stop();
             return;
          }
       }
 
       encoder.copyTextureToBuffer(source, readback, 0L, () -> {
-         try (GpuBuffer.MappedView view = encoder.mapBuffer(readback, true, false)) {
-            view.data().get(0, pixels, 0, target.frameBytes());
-            target.submit(pixels, due);
+         GpuBuffer.MappedView view;
+         try {
+            view = encoder.mapBuffer(readback, true, false);
          } catch (RuntimeException e) {
-            target.skip(due, pixels);
-         } finally {
-            if (readback.size() == this.readbackSize && this.readbacks.size() < 4) {
-               this.readbacks.push(readback);
-            } else {
-               readback.close();
-            }
+            target.skip(due, null);
+            this.recycle(readback, null);
+            return;
          }
+
+         // The encoder thread reads the mapped memory directly, so the game thread never copies the frame.
+         target.submitDirect(view.data(), due, () -> this.sent.add(() -> this.recycle(readback, view)));
       }, 0);
    }
 
@@ -312,6 +321,20 @@ public final class ClipRecorder {
             failed.accept(error.getCause() != null ? error.getCause().getMessage() : error.getMessage());
          }
       }));
+   }
+
+   /** Unmaps a sent readback and keeps it for reuse; render thread only. */
+   private void recycle(GpuBuffer readback, GpuBuffer.MappedView view) {
+      this.inFlight = Math.max(0, this.inFlight - 1);
+      if (view != null) {
+         view.close();
+      }
+
+      if (readback.size() == this.readbackSize && this.readbacks.size() < MAX_IN_FLIGHT) {
+         this.readbacks.push(readback);
+      } else {
+         readback.close();
+      }
    }
 
    private void closeReadbacks() {
