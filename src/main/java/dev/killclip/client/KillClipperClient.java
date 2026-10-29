@@ -71,6 +71,9 @@ public final class KillClipperClient implements ClientModInitializer {
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
    private boolean started;
+   private long lastSelfDeathMs = Long.MIN_VALUE / 2;
+   /** A player hit this recently counts as killed if the match ends and you are sent away while alive. */
+   private static final long MATCH_END_HIT_MS = 5000L;
    private static final double EXPLOSION_RANGE = 12.0;
    private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
    private final long launchMs = nowMs();
@@ -142,11 +145,16 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          this.trackProjectileHits(client);
+         if (client.player != null && client.player.isDead()) {
+            this.lastSelfDeathMs = nowMs();
+         }
+
          this.checkHitPlayers(client);
          this.runSelfTest();
          this.streaks.flush(nowMs()).ifPresent(this::saveStreakClip);
          String identity = client.world == null ? "" : client.world.getRegistryKey().toString();
          if (!identity.equals(this.worldIdentity)) {
+            this.onWorldLeave();
             this.duplicates.clear();
             this.streaks.clear();
             this.hits.clear();
@@ -235,6 +243,26 @@ public final class KillClipperClient implements ClientModInitializer {
          LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
          this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
       }
+   }
+
+   /**
+    * Called when the server moves you to another world or server, such as back to the lobby after a match.
+    * Saves pending kills right away instead of dropping them. If you were alive and had just hit someone,
+    * the match ended in your favour, so that player counts as killed even if their death was never shown.
+    */
+   private void onWorldLeave() {
+      if (!this.config.enabled) {
+         return;
+      }
+
+      long now = nowMs();
+      if (this.config.trackHits && now - this.lastSelfDeathMs > this.config.hitWindowMs) {
+         for (String victim : this.hits.recent(now, MATCH_END_HIT_MS)) {
+            this.onKillConfirmed(victim, "match end");
+         }
+      }
+
+      this.streaks.finish().ifPresent(this::saveStreakClip);
    }
 
    /** Counts players near an explosion you set off (crystal, anchor, bed) as hit by you. */
@@ -514,6 +542,7 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    private void reset() {
+      this.onWorldLeave();
       this.duplicates.clear();
       this.streaks.clear();
       this.hits.clear();

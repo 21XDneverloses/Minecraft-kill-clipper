@@ -21,6 +21,12 @@ public final class StreakTrackerTest {
       check(closed.kills() == 2, "kill after gap closes the previous group");
       check(t2.flush(40_000).orElseThrow().kills() == 1, "the new kill finishes as a group of 1");
 
+      StreakTracker t3 = new StreakTracker(10_000);
+      t3.onKill(0);
+      t3.onKill(2_000);
+      check(t3.finish().orElseThrow().kills() == 2, "finish saves a pending group right away (sent to lobby)");
+      check(t3.finish().isEmpty() && t3.flush(60_000).isEmpty(), "a finished group is not saved twice");
+
       System.out.println("all StreakTracker checks passed");
    }
 

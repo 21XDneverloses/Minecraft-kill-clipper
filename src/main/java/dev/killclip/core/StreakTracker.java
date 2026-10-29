@@ -33,6 +33,17 @@ public final class StreakTracker {
       }
    }
 
+   /** Ends the current group now (for example when the server moves you to another world). */
+   public Optional<Streak> finish() {
+      if (this.kills == 0) {
+         return Optional.empty();
+      }
+
+      Streak streak = new Streak(this.kills, this.firstKillMs, this.lastKillMs);
+      this.kills = 0;
+      return Optional.of(streak);
+   }
+
    public void clear() {
       this.kills = 0;
    }
