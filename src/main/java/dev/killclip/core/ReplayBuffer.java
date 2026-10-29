@@ -51,6 +51,8 @@ public final class ReplayBuffer implements AutoCloseable {
    private final int width;
    private final int height;
    private final int frameBytes;
+   /** Frames arrive already converted to YUV on the GPU (top-down NV12) instead of bottom-up RGBA. */
+   private final boolean nv12;
    private final Path segmentDir;
    private final long startMs;
    private final Process ffmpeg;
@@ -73,11 +75,12 @@ public final class ReplayBuffer implements AutoCloseable {
    private volatile String failure;
    private volatile boolean closed;
 
-   private ReplayBuffer(Settings settings, int width, int height, Path segmentDir, long nowMs) throws IOException {
+   private ReplayBuffer(Settings settings, int width, int height, boolean nv12, Path segmentDir, long nowMs) throws IOException {
       this.settings = settings;
       this.width = width;
       this.height = height;
-      this.frameBytes = width * height * 4;
+      this.nv12 = nv12;
+      this.frameBytes = nv12 ? width * height * 3 / 2 : width * height * 4;
       this.segmentDir = segmentDir;
       this.startMs = nowMs;
       this.lastClaimMs = nowMs;
@@ -98,7 +101,7 @@ public final class ReplayBuffer implements AutoCloseable {
       // Frames go to FFmpeg over a loopback socket: much faster than a process pipe on Windows.
       this.videoServer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
       this.videoServer.setSoTimeout(15000);
-      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, segmentDir, this.videoServer.getLocalPort(), audioPort));
+      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, nv12, segmentDir, this.videoServer.getLocalPort(), audioPort));
       builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
       builder.redirectError(segmentDir.resolve("ffmpeg.log").toFile());
       this.ffmpeg = builder.start();
@@ -112,10 +115,15 @@ public final class ReplayBuffer implements AutoCloseable {
    }
 
    public static ReplayBuffer start(Settings settings, int width, int height, Path segmentDir, long nowMs) throws IOException {
-      return new ReplayBuffer(settings, width, height, segmentDir, nowMs);
+      return start(settings, width, height, false, segmentDir, nowMs);
    }
 
-   public static List<String> recordCommand(Settings s, int width, int height, Path segmentDir, int videoPort, int audioPort) {
+   /** With {@code nv12}, frames are top-down NV12 (width a multiple of 4, height even) and need no conversion. */
+   public static ReplayBuffer start(Settings settings, int width, int height, boolean nv12, Path segmentDir, long nowMs) throws IOException {
+      return new ReplayBuffer(settings, width, height, nv12, segmentDir, nowMs);
+   }
+
+   public static List<String> recordCommand(Settings s, int width, int height, boolean nv12, Path segmentDir, int videoPort, int audioPort) {
       int outHeight = s.outputHeight() <= 0 || s.outputHeight() >= height ? height : s.outputHeight();
       int outWidth = (int)Math.round((double)width * outHeight / height);
       List<String> cmd = new ArrayList<>(List.of(
@@ -123,7 +131,7 @@ public final class ReplayBuffer implements AutoCloseable {
          // Each captured frame is sent once and stamped with its arrival time; FFmpeg repeats frames to keep a
          // constant frame rate, so a slow moment no longer means writing the same 8 MB frame several times.
          "-use_wallclock_as_timestamps", "1",
-         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()),
+         "-f", "rawvideo", "-pix_fmt", nv12 ? "nv12" : "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()),
          "-i", "tcp://127.0.0.1:" + videoPort
       ));
       if (s.gameAudio()) {
@@ -132,12 +140,17 @@ public final class ReplayBuffer implements AutoCloseable {
          cmd.addAll(s.audioInput());
       }
 
-      // vflip only adjusts line pointers; the RGBA to YUV conversion is the costly step, so run it on several threads.
-      int threads = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors() / 2));
-      cmd.addAll(List.of(
-         "-filter_threads", String.valueOf(threads),
-         "-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1) + ":flags=fast_bilinear,format=yuv420p"
-      ));
+      String scale = "scale=" + (outWidth & ~1) + ":" + (outHeight & ~1) + ":flags=fast_bilinear";
+      if (nv12) {
+         // The GPU already flipped and converted the frame, like Medal does; only resize when a smaller size is set.
+         if (outHeight != height) {
+            cmd.addAll(List.of("-vf", scale));
+         }
+      } else {
+         // vflip only adjusts line pointers; the RGBA to YUV conversion is the costly step, so run it on several threads.
+         int threads = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors() / 2));
+         cmd.addAll(List.of("-filter_threads", String.valueOf(threads), "-vf", "vflip," + scale + ",format=yuv420p"));
+      }
       cmd.addAll(codecArgs(s.encoder(), s.quality()));
       if (s.hasAudio()) {
          cmd.addAll(List.of("-c:a", "aac", "-b:a", "160k", "-ar", "48000"));
@@ -170,6 +183,10 @@ public final class ReplayBuffer implements AutoCloseable {
 
    public int height() {
       return this.height;
+   }
+
+   public boolean nv12() {
+      return this.nv12;
    }
 
    public Settings settings() {
