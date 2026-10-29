@@ -1,10 +1,11 @@
 import dev.killclip.core.ReplayBuffer;
 import java.nio.file.*;
+import java.util.List;
 
 public final class ReplayBufferTest {
    public static void main(String[] args) throws Exception {
       Path dir = Path.of(args[0]);
-      var settings = new ReplayBuffer.Settings("ffmpeg", 30, 0, 23, "libx264", 30);
+      var settings = new ReplayBuffer.Settings("ffmpeg", 30, 0, 23, "libx264", 30, List.of());
       long t0 = System.nanoTime() / 1_000_000L;
       try (ReplayBuffer rb = ReplayBuffer.start(settings, 320, 240, dir.resolve("segments"), t0)) {
          int rendered = 0;

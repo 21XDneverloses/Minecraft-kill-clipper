@@ -41,6 +41,8 @@ public final class KillClipSettingsScreen extends Screen {
          c -> c.resolution = next(RESOLUTIONS, c.resolution));
       this.button(x, y + 72, 148, () -> "Quality: " + qualityName(this.draft.quality), c -> c.quality = next(QUALITIES, c.quality));
       this.button(x + 152, y + 72, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
+      this.button(x, y + 144, 148, () -> "Audio: " + ("system".equals(this.draft.audioSource) ? "System" : "Off"),
+         c -> c.audioSource = "system".equals(c.audioSource) ? "off" : "system");
       this.button(x, y + 96, 148, () -> "Buffer: " + this.draft.bufferSeconds + " s", c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
       this.button(x + 152, y + 96, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
       this.button(x, y + 120, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
@@ -49,12 +51,12 @@ public final class KillClipSettingsScreen extends Screen {
          c.postRollMs = Math.min(c.postRollMs, c.streakGapMs);
       });
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Open clips folder"), button -> KillClipperClient.instance().openClipsFolder())
-         .dimensions(x, y + 148, 148, 20).build());
+         .dimensions(x, y + 168, 148, 20).build());
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Test clip (last 10 s)"), button -> {
          this.client.setScreen(this.parent);
          KillClipperClient.instance().testClip();
-      }).dimensions(x + 152, y + 148, 148, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), button -> this.close()).dimensions(x, y + 172, 300, 20).build());
+      }).dimensions(x + 152, y + 168, 148, 20).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), button -> this.close()).dimensions(x, y + 192, 300, 20).build());
    }
 
    private void button(int x, int y, int width, Supplier<String> label, Consumer<ClipConfig> edit) {
@@ -97,7 +99,7 @@ public final class KillClipSettingsScreen extends Screen {
    public void render(DrawContext graphics, int mouseX, int mouseY, float delta) {
       super.render(graphics, mouseX, mouseY, delta);
       graphics.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 16, -1);
-      int bottom = Math.max(36, this.height / 2 - 104) + 198;
+      int bottom = Math.max(36, this.height / 2 - 104) + 218;
       graphics.drawCenteredTextWithShadow(this.textRenderer, "Clips save as mp4. Needs FFmpeg installed. Settings save automatically.", this.width / 2, bottom, -5592406);
       if (!this.error.isEmpty()) {
          graphics.drawCenteredTextWithShadow(this.textRenderer, this.error, this.width / 2, bottom + 12, -34953);

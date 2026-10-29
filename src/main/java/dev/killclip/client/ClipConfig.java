@@ -33,6 +33,8 @@ public final class ClipConfig {
    public int quality = 23;
    public String encoder = "libx264";
    public int bufferSeconds = 30;
+   public String audioSource = "off";
+   public String audioDevice = "";
    public int preRollMs = 5000;
    public int postRollMs = 2000;
    public String clipsFolder = "";
@@ -74,6 +76,7 @@ public final class ClipConfig {
       require(this.quality >= 0 && this.quality <= 51, "quality must be 0..51 (lower is better)");
       require(this.encoder != null && ENCODERS.contains(this.encoder), "encoder must be one of " + ENCODERS);
       require(this.bufferSeconds >= 10 && this.bufferSeconds <= 120, "bufferSeconds must be 10..120");
+      require("off".equals(this.audioSource) || "system".equals(this.audioSource), "audioSource must be off or system");
       require(this.preRollMs >= 0 && this.preRollMs <= 20000, "preRollMs must be 0..20000");
       require(this.postRollMs >= 0 && this.postRollMs <= this.streakGapMs, "postRollMs must be 0..streakGapMs");
       require(this.clipsFolder != null, "clipsFolder must be a path or empty for the default");

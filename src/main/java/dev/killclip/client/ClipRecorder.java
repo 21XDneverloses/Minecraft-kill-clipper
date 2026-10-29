@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Locale;
 import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -37,7 +39,24 @@ public final class ClipRecorder {
    }
 
    public static ReplayBuffer.Settings settingsFrom(ClipConfig config) {
-      return new ReplayBuffer.Settings(config.ffmpegPath, config.fps, config.resolution, config.quality, config.encoder, config.bufferSeconds);
+      return new ReplayBuffer.Settings(config.ffmpegPath, config.fps, config.resolution, config.quality, config.encoder, config.bufferSeconds, audioInput(config));
+   }
+
+   /** FFmpeg input arguments for the chosen audio source. Only system audio is supported. */
+   static List<String> audioInput(ClipConfig config) {
+      if (!"system".equals(config.audioSource)) {
+         return List.of();
+      }
+
+      String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+      String device = config.audioDevice == null ? "" : config.audioDevice.strip();
+      if (os.contains("win")) {
+         return device.isEmpty() ? List.of() : List.of("-f", "dshow", "-i", "audio=" + device);
+      } else if (os.contains("mac")) {
+         return List.of("-f", "avfoundation", "-i", ":" + (device.isEmpty() ? "0" : device));
+      } else {
+         return List.of("-f", "pulse", "-i", device.isEmpty() ? "default" : device);
+      }
    }
 
    public boolean running() {

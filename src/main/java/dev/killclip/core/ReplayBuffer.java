@@ -24,7 +24,8 @@ import java.util.stream.Stream;
  * [startMs + k * 1000, startMs + (k + 1) * 1000).
  */
 public final class ReplayBuffer implements AutoCloseable {
-   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds) {
+   /** audioInput holds the FFmpeg input arguments for an audio device; empty means video only. */
+   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput) {
    }
 
    private record Frame(byte[] pixels, int copies) {
@@ -89,10 +90,15 @@ public final class ReplayBuffer implements AutoCloseable {
       int outWidth = (int)Math.round((double)width * outHeight / height);
       List<String> cmd = new ArrayList<>(List.of(
          s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin",
-         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()), "-i", "-",
-         "-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1)
+         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()), "-i", "-"
       ));
+      cmd.addAll(s.audioInput());
+      cmd.addAll(List.of("-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1)));
       cmd.addAll(codecArgs(s.encoder(), s.quality()));
+      if (!s.audioInput().isEmpty()) {
+         cmd.addAll(List.of("-c:a", "aac", "-b:a", "160k", "-ar", "48000"));
+      }
+
       cmd.addAll(List.of(
          "-pix_fmt", "yuv420p", "-g", String.valueOf(s.fps()), "-force_key_frames", "expr:gte(t,n_forced*1)",
          "-f", "segment", "-segment_time", "1", "-segment_format", "mpegts", "-reset_timestamps", "1",
