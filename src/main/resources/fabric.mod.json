@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "killclipper",
+  "version": "${version}",
+  "name": "Kill Clipper",
+  "icon": "assets/medalkillclipper/icon.png",
+  "description": "Records your gameplay in a rolling buffer and saves an mp4 clip when you get a kill or a multi-kill streak.",
+  "authors": [
+    "Kill Clipper contributors"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.killclip.client.KillClipperClient"
+    ],
+    "modmenu": [
+      "dev.killclip.client.KillClipModMenu"
+    ]
+  },
+  "mixins": [
+    "killclipper.mixins.json"
+  ],
+  "suggests": {
+    "modmenu": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
