@@ -1,31 +1,46 @@
 # Kill Clipper
 
-A Fabric client mod for Minecraft 1.21.11 that keeps a rolling replay buffer and saves an mp4 clip when you get a kill or a multi-kill streak. It does not need Medal or any other recorder.
+A Fabric client mod for Minecraft 1.21.11. It keeps a rolling replay buffer of your game and saves an mp4 clip when you get a kill or a multi-kill streak. Nothing else needs installing: FFmpeg ships inside the mod, and game audio is captured from Minecraft itself.
 
-## Requirements
+## What it does
 
-- Java 21
-- FFmpeg on your PATH, or set `ffmpegPath` in `config/killclipper.json`
+- **Kills:** detected from vanilla death messages and per-server chat rules. It also counts a kill when a player you hit dies within a few seconds (`trackHits`, `hitWindowMs`), which works on any server.
+- **Streaks:** kills within the streak window (default 10 s) are grouped into one clip. Two or more kills count as a streak (`streakMinKills`).
+- **Clips:** saved to `.minecraft/killclips/`. Each clip starts a few seconds before the first kill (`preRollMs`) and runs past the last one (`postRollMs`).
+- **Settings:** Mod Menu or `/killclip menu`. FPS, resolution, quality, encoder (CPU, NVIDIA, AMD, Intel), buffer length, audio, and streak options.
+- **Commands:** `/killclip status`, `test`, `folder`, `on`, `off`, `reload`, `learn`.
+
+## Audio
+
+`audioSource` controls clip audio:
+
+- `game` (default): Minecraft's own sound only. The sound engine runs on an OpenAL loopback device; the mod plays that output to your speakers through Java Sound and records a copy. If that cannot be set up, the normal sound device is used and clips have no audio.
+- `system`: everything playing on the computer, through an FFmpeg capture device named in `audioDevice` (Windows: a DirectShow device such as `Stereo Mix`; Linux: a PulseAudio source; macOS: an AVFoundation index).
+- `off`: no audio.
+
+## FFmpeg
+
+FFmpeg builds for Windows x64, macOS (Intel and Apple Silicon) and Linux x64 come from [bytedeco javacpp-presets](https://github.com/bytedeco/javacpp-presets/tree/master/ffmpeg). The mod unpacks the matching one into `killclips/.ffmpeg/` on first launch. Set `ffmpegPath` to use a different FFmpeg. These builds are GPL; see `FFMPEG_NOTICE.txt`.
+
+The bundled builds make the jar about 114 MB. To build for one platform only:
+
+    ./gradlew build -Pffmpeg_platforms=windows-x86_64-gpl
 
 ## Build
 
     ./gradlew build
 
-The jar is written to `build/libs/`.
+The jar is written to `build/libs/`. Needs Java 21.
 
-## Test
+## Tests
 
-- `tests/StreakTrackerTest.java` covers streak grouping. Run with `javac` and `java`.
-- `tests/ReplayBufferTest.java` records synthetic frames through FFmpeg and saves a clip. It needs `ffmpeg` on PATH.
+The files in `tests/` are standalone and run with `javac` and `java`:
 
-## Audio
+- `StreakTrackerTest`, `HitTrackerTest`: streak grouping, hit tracking, and unpacking the bundled FFmpeg.
+- `ReplayBufferTest`, `GameAudioTest`: record synthetic frames and audio through FFmpeg and save clips. Both need `ffmpeg` on PATH.
 
-Set `audioSource` to `system` to record system audio (off by default). It records everything playing on the machine, not only Minecraft. Set `audioDevice` to choose the input:
-
-- **Windows:** the name of a DirectShow capture device, such as `Stereo Mix` (enable it in Sound settings) or `CABLE Output` (VB-Audio Cable). Audio stays off until a device is set.
-- **Linux:** a PulseAudio source, or blank for `default`.
-- **macOS:** an AVFoundation audio index, or blank for `0`. You need a virtual device such as BlackHole.
+To check the whole pipeline in the game, launch with `-Dkillclip.selfTestClipSeconds=40`, which saves a test clip 40 seconds after startup. On a machine with no speakers, `-Dkillclip.audioWithoutSpeakers=true` runs game audio capture without playback.
 
 ## Status
 
-Built and tested in the game on a virtual display. Video and system audio were tested with synthetic inputs, not a real sound device. Kill detection still uses the server list in the config. Game-only audio is not supported.
+Tested in the game on a Linux virtual display: video, game audio from the title music, and clip saving. Not yet tested in a real PvP fight, on Windows or macOS, or with real speakers.

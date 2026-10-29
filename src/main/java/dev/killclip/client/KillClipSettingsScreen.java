@@ -12,6 +12,7 @@ import net.minecraft.text.Text;
 
 @Environment(EnvType.CLIENT)
 public final class KillClipSettingsScreen extends Screen {
+   private static final List<String> AUDIO = List.of("game", "system", "off");
    private static final List<Integer> FPS = List.of(30, 60, 120);
    private static final List<Integer> RESOLUTIONS = List.of(480, 720, 1080, 1440, 0);
    private static final List<Integer> QUALITIES = List.of(28, 23, 18);
@@ -41,8 +42,7 @@ public final class KillClipSettingsScreen extends Screen {
          c -> c.resolution = next(RESOLUTIONS, c.resolution));
       this.button(x, y + 72, 148, () -> "Quality: " + qualityName(this.draft.quality), c -> c.quality = next(QUALITIES, c.quality));
       this.button(x + 152, y + 72, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
-      this.button(x, y + 144, 148, () -> "Audio: " + ("system".equals(this.draft.audioSource) ? "System" : "Off"),
-         c -> c.audioSource = "system".equals(c.audioSource) ? "off" : "system");
+      this.button(x, y + 144, 300, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
       this.button(x, y + 96, 148, () -> "Buffer: " + this.draft.bufferSeconds + " s", c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
       this.button(x + 152, y + 96, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
       this.button(x, y + 120, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
@@ -74,6 +74,14 @@ public final class KillClipSettingsScreen extends Screen {
       return label + ": " + (enabled ? "ON" : "OFF");
    }
 
+   private static String audioName(String source) {
+      return switch (source) {
+         case "game" -> "Game only";
+         case "system" -> "Whole computer (set audioDevice)";
+         default -> "Off";
+      };
+   }
+
    private static String qualityName(int crf) {
       return crf <= 18 ? "High" : crf <= 23 ? "Medium" : "Low";
    }
@@ -100,7 +108,7 @@ public final class KillClipSettingsScreen extends Screen {
       super.render(graphics, mouseX, mouseY, delta);
       graphics.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 16, -1);
       int bottom = Math.max(36, this.height / 2 - 104) + 218;
-      graphics.drawCenteredTextWithShadow(this.textRenderer, "Clips save as mp4. Needs FFmpeg installed. Settings save automatically.", this.width / 2, bottom, -5592406);
+      graphics.drawCenteredTextWithShadow(this.textRenderer, "Clips save as mp4 in the killclips folder. Settings save automatically.", this.width / 2, bottom, -5592406);
       if (!this.error.isEmpty()) {
          graphics.drawCenteredTextWithShadow(this.textRenderer, this.error, this.width / 2, bottom + 12, -34953);
       }

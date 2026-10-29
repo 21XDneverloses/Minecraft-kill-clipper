@@ -4,7 +4,8 @@
   "package": "dev.killclip.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "MinecraftClientMixin"
+    "MinecraftClientMixin",
+    "SoundEngineMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -1,6 +1,7 @@
 package dev.killclip.client;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import dev.killclip.core.HitTracker;
 import dev.killclip.core.KillDeduplicator;
 import dev.killclip.core.KillRules;
 import dev.killclip.core.StreakTracker;
@@ -27,9 +28,12 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ServerInfo;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.ActionResult;
 import net.minecraft.text.Text;
 import net.minecraft.text.TranslatableTextContent;
 import net.minecraft.util.Formatting;
@@ -46,6 +50,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private List<Pattern> vanillaPatterns = List.of();
    private List<Pattern> decoratedPatterns = List.of();
    private final KillDeduplicator duplicates = new KillDeduplicator();
+   private final HitTracker hits = new HitTracker();
    private StreakTracker streaks = new StreakTracker(10000L);
    private ClipRecorder recorder;
    private ClipConfig config;
@@ -57,6 +62,10 @@ public final class KillClipperClient implements ClientModInitializer {
    private String worldIdentity = "";
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
+   private boolean started;
+   private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
+   private final long launchMs = nowMs();
+   private boolean selfTestDone;
 
    public static KillClipperClient instance() {
       return INSTANCE;
@@ -64,7 +73,8 @@ public final class KillClipperClient implements ClientModInitializer {
 
    public void onInitializeClient() {
       INSTANCE = this;
-      this.recorder = new ClipRecorder(FabricLoader.getInstance().getGameDir().resolve("killclips").resolve(".buffer"), message -> {
+      Path clipDir = FabricLoader.getInstance().getGameDir().resolve("killclips");
+      this.recorder = new ClipRecorder(clipDir.resolve(".buffer"), clipDir.resolve(".ffmpeg"), message -> {
          LOGGER.warn("Recorder: {}", message);
          MinecraftClient.getInstance().execute(() -> tell("Recorder: " + message));
       });
@@ -95,16 +105,26 @@ public final class KillClipperClient implements ClientModInitializer {
          this.finishCapture();
          this.recorder.stop();
       });
+      AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+         if (world.isClient() && entity instanceof PlayerEntity victim && victim != player) {
+            this.hits.onHit(victim.getGameProfile().name(), nowMs());
+         }
+
+         return ActionResult.PASS;
+      });
       ClientTickEvents.END_CLIENT_TICK.register(client -> {
          if (this.captureUntil != 0L && nowMs() >= this.captureUntil) {
             this.finishCapture();
          }
 
+         this.checkHitPlayers(client);
+         this.runSelfTest();
          this.streaks.flush(nowMs()).ifPresent(this::saveStreakClip);
          String identity = client.world == null ? "" : client.world.getRegistryKey().toString();
          if (!identity.equals(this.worldIdentity)) {
             this.duplicates.clear();
             this.streaks.clear();
+            this.hits.clear();
             this.worldIdentity = identity;
          }
 
@@ -146,6 +166,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }));
          dispatcher.register(root);
       });
+      this.started = true;
       LOGGER.info("Kill Clipper loaded for Minecraft 1.21.11; config: {}", ClipConfig.PATH);
    }
 
@@ -176,13 +197,36 @@ public final class KillClipperClient implements ClientModInitializer {
                kill = KillRules.fromMessage(message.getString(), this.serverPatterns.getOrDefault(this.host(), List.of()), local, online);
             }
 
-            kill.ifPresent(event -> {
-               long receipt = nowMs();
-               if (this.duplicates.accept(event.victim(), receipt, this.config.duplicateWindowMs)) {
-                  LOGGER.debug("Confirmed kill of {}; grouping into streak at monotonic ms {}", event.victim(), receipt);
-                  this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
-               }
-            });
+            kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
+         }
+      }
+   }
+
+   /** Every kill source (chat message or a death of someone you hit) ends up here; duplicates are dropped. */
+   private void onKillConfirmed(String victim, String source) {
+      long receipt = nowMs();
+      this.hits.forget(victim);
+      if (this.duplicates.accept(victim, receipt, this.config.duplicateWindowMs)) {
+         LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
+         this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
+      }
+   }
+
+   /** Credits a kill when a player you hit recently is now dead, on any server. */
+   private void checkHitPlayers(MinecraftClient client) {
+      if (!this.config.enabled || !this.config.trackHits || client.world == null || !this.allowed()) {
+         return;
+      }
+
+      List<String> recent = this.hits.recent(nowMs(), this.config.hitWindowMs);
+      if (recent.isEmpty()) {
+         return;
+      }
+
+      for (PlayerEntity player : client.world.getPlayers()) {
+         String name = player.getGameProfile().name();
+         if (player != client.player && recent.contains(name) && (player.isDead() || player.getHealth() <= 0.0F)) {
+            this.onKillConfirmed(name, "hit tracking");
          }
       }
    }
@@ -273,6 +317,16 @@ public final class KillClipperClient implements ClientModInitializer {
       next.serverPatterns.forEach((server, patterns) -> compiled.put(KillRules.normalizeHost(server), patterns.stream().map(Pattern::compile).toList()));
       this.config = next;
       this.serverPatterns = compiled;
+      boolean gameAudio = "game".equals(next.audioSource);
+      if (gameAudio != GameAudioTap.wanted()) {
+         GameAudioTap.setWanted(gameAudio);
+         // Game audio needs the sound engine reopened on a loopback device (or back on the speakers).
+         MinecraftClient client = MinecraftClient.getInstance();
+         if (this.started && client != null && client.getSoundManager() != null) {
+            client.execute(() -> client.getSoundManager().reloadSounds());
+         }
+      }
+
       this.duplicates.clear();
       this.streaks = new StreakTracker(next.streakGapMs);
    }
@@ -304,6 +358,16 @@ public final class KillClipperClient implements ClientModInitializer {
          return "";
       } catch (Exception e) {
          return "Could not save settings: " + e.getMessage();
+      }
+   }
+
+   /** Dev check: -Dkillclip.selfTestClipSeconds=N saves a test clip N seconds after launch, without a world. */
+   private void runSelfTest() {
+      if (SELF_TEST_MS > 0L && !this.selfTestDone && nowMs() - this.launchMs >= SELF_TEST_MS) {
+         this.selfTestDone = true;
+         long now = nowMs();
+         this.recorder.save(now - 10000L, now, "selftest", this.config.clipsDir(),
+            file -> LOGGER.info("KILLCLIP_SELFTEST_CLIP saved {}", file), error -> LOGGER.error("KILLCLIP_SELFTEST_CLIP failed: {}", error));
       }
    }
 
@@ -386,6 +450,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private void reset() {
       this.duplicates.clear();
       this.streaks.clear();
+      this.hits.clear();
       this.recentPlayers.clear();
       this.nextPlayerRefresh = 0L;
       this.worldIdentity = "";

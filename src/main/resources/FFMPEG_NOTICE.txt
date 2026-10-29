@@ -1,0 +1,12 @@
+This mod bundles FFmpeg executables and libraries (version 8.1.2, built by the
+bytedeco javacpp-presets project, "gpl" variants, which include libx264).
+
+FFmpeg is licensed under the GNU General Public License because these builds
+enable GPL components. Source code:
+  FFmpeg:          https://ffmpeg.org/download.html
+  Build scripts:   https://github.com/bytedeco/javacpp-presets/tree/master/ffmpeg
+  x264:            https://www.videolan.org/developers/x264.html
+
+The bundled files are unmodified copies from the Maven Central artifacts
+org.bytedeco:ffmpeg:8.1.2-1.5.14 (classifiers windows-x86_64-gpl,
+linux-x86_64-gpl, macosx-x86_64-gpl, macosx-arm64-gpl).

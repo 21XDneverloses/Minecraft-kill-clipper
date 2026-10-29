@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
+import dev.killclip.core.BundledFfmpeg;
 import dev.killclip.core.ReplayBuffer;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,18 +29,47 @@ public final class ClipRecorder {
    private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
    private final Path bufferRoot;
    private final Consumer<String> errors;
+   private final CompletableFuture<String> bundledFfmpeg;
    private ReplayBuffer buffer;
    private long retryAtMs;
    private String lastError = "";
 
-   public ClipRecorder(Path bufferRoot, Consumer<String> errors) {
+   public ClipRecorder(Path bufferRoot, Path ffmpegCache, Consumer<String> errors) {
       this.bufferRoot = bufferRoot;
       this.errors = errors;
       deleteTree(bufferRoot);
+      // Unpack the FFmpeg build shipped in the jar off the render thread; fall back to one on PATH.
+      this.bundledFfmpeg = CompletableFuture.supplyAsync(() -> {
+         try {
+            return BundledFfmpeg.platform(System.getProperty("os.name", ""), System.getProperty("os.arch", ""))
+               .flatMap(platform -> {
+                  try {
+                     return BundledFfmpeg.extract(ClipRecorder.class.getClassLoader(), platform, ffmpegCache);
+                  } catch (IOException e) {
+                     throw new RuntimeException(e);
+                  }
+               })
+               .map(Path::toString)
+               .orElse("ffmpeg");
+         } catch (RuntimeException e) {
+            KillClipperClient.LOGGER.warn("Could not unpack the bundled FFmpeg; trying one on PATH", e);
+            return "ffmpeg";
+         }
+      });
    }
 
-   public static ReplayBuffer.Settings settingsFrom(ClipConfig config) {
-      return new ReplayBuffer.Settings(config.ffmpegPath, config.fps, config.resolution, config.quality, config.encoder, config.bufferSeconds, audioInput(config));
+   /** The FFmpeg to run, or null while the bundled one is still unpacking. */
+   private String ffmpegPath(ClipConfig config) {
+      if (!config.ffmpegPath.isBlank()) {
+         return config.ffmpegPath;
+      }
+
+      return this.bundledFfmpeg.getNow(null);
+   }
+
+   private ReplayBuffer.Settings settingsFrom(ClipConfig config, String ffmpeg) {
+      boolean gameAudio = "game".equals(config.audioSource) && GameAudioTap.active();
+      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, config.encoder, config.bufferSeconds, audioInput(config), gameAudio);
    }
 
    /** FFmpeg input arguments for the chosen audio source. Only system audio is supported. */
@@ -78,7 +108,12 @@ public final class ClipRecorder {
 
       int width = framebuffer.textureWidth;
       int height = framebuffer.textureHeight;
-      ReplayBuffer.Settings wanted = settingsFrom(config);
+      String ffmpeg = this.ffmpegPath(config);
+      if (ffmpeg == null) {
+         return;
+      }
+
+      ReplayBuffer.Settings wanted = this.settingsFrom(config, ffmpeg);
       if (this.buffer != null) {
          String failure = this.buffer.failure();
          if (failure != null) {
@@ -97,9 +132,10 @@ public final class ClipRecorder {
 
          try {
             this.buffer = ReplayBuffer.start(wanted, width, height, this.bufferRoot.resolve("session-" + System.nanoTime()), nowMs);
+            GameAudioTap.setSink(wanted.gameAudio() ? this.buffer::pushAudio : null);
             this.lastError = "";
          } catch (IOException e) {
-            this.report("Could not start FFmpeg (" + config.ffmpegPath + "): " + e.getMessage() + ". Install FFmpeg or set ffmpegPath in the config.");
+            this.report("Could not start FFmpeg (" + ffmpeg + "): " + e.getMessage());
             this.retryAtMs = nowMs + 30000L;
             return;
          }
@@ -152,6 +188,7 @@ public final class ClipRecorder {
    public void stop() {
       ReplayBuffer old = this.buffer;
       this.buffer = null;
+      GameAudioTap.setSink(null);
       if (old != null) {
          CompletableFuture.runAsync(() -> {
             old.close();

@@ -14,13 +14,52 @@ repositories {
     maven { url = 'https://maven.terraformersmc.com/releases/' }
 }
 
+configurations {
+    bundledFfmpeg { transitive = false }
+}
+
+// FFmpeg builds shipped inside the jar so players do not have to install anything.
+// Build a smaller jar with e.g. -Pffmpeg_platforms=windows-x86_64-gpl
+def ffmpegPlatforms = (project.findProperty('ffmpeg_platforms') ?: 'windows-x86_64-gpl,linux-x86_64-gpl,macosx-x86_64-gpl,macosx-arm64-gpl')
+    .split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+
 dependencies {
+    ffmpegPlatforms.each { bundledFfmpeg "org.bytedeco:ffmpeg:${project.ffmpeg_version}:${it}" }
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 }
+
+def prepareFfmpeg = tasks.register('prepareFfmpeg') {
+    def outDir = layout.buildDirectory.dir('generated/ffmpeg')
+    def artifacts = configurations.bundledFfmpeg
+    inputs.files(artifacts)
+    inputs.property('platforms', ffmpegPlatforms)
+    outputs.dir(outDir)
+    doLast {
+        def root = outDir.get().asFile
+        project.delete(root)
+        artifacts.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+            def platform = artifact.classifier
+            def target = new File(root, "ffmpeg/${platform}")
+            project.copy {
+                from(project.zipTree(artifact.file)) {
+                    include "org/bytedeco/ffmpeg/${platform}/*"
+                    exclude '**/*jni*', '**/ffprobe*'
+                    eachFile { it.path = it.name }
+                    includeEmptyDirs = false
+                }
+                into target
+            }
+            def names = target.list().findAll { it != 'files.txt' }.sort()
+            new File(target, 'files.txt').text = (["version=${project.ffmpeg_version}"] + names).join('\n') + '\n'
+        }
+    }
+}
+
+sourceSets.main.resources.srcDir(prepareFfmpeg)
 
 processResources {
     inputs.property 'version', project.version
@@ -35,4 +74,8 @@ tasks.withType(JavaCompile).configureEach {
 
 java {
     withSourcesJar()
+}
+
+tasks.named('sourcesJar') {
+    exclude 'ffmpeg/**'
 }

@@ -2,6 +2,9 @@ package dev.killclip.core;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,9 +27,20 @@ import java.util.stream.Stream;
  * [startMs + k * 1000, startMs + (k + 1) * 1000).
  */
 public final class ReplayBuffer implements AutoCloseable {
-   /** audioInput holds the FFmpeg input arguments for an audio device; empty means video only. */
-   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput) {
+   /**
+    * audioInput holds FFmpeg input arguments for a system audio device (empty = none).
+    * gameAudio records PCM pushed through {@link #pushAudio} instead.
+    */
+   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput, boolean gameAudio) {
+      boolean hasAudio() {
+         return this.gameAudio || !this.audioInput.isEmpty();
+      }
    }
+
+   /** Game audio format: 48 kHz, 16-bit signed little-endian, stereo. */
+   public static final int AUDIO_RATE = 48000;
+   public static final int AUDIO_FRAME_BYTES = 4;
+   private static final int AUDIO_BACKLOG_FRAMES = AUDIO_RATE / 4;
 
    private record Frame(byte[] pixels, int copies) {
    }
@@ -47,6 +61,10 @@ public final class ReplayBuffer implements AutoCloseable {
    private final AtomicLong pinnedSegment = new AtomicLong(Long.MAX_VALUE);
    private final ExecutorService saver = Executors.newSingleThreadExecutor(r -> daemon(r, "killclip-save"));
    private final Thread writer;
+   private final ServerSocket audioServer;
+   private final Thread audioThread;
+   private final BlockingQueue<byte[]> audioChunks = new ArrayBlockingQueue<>(256);
+   private final AtomicLong audioQueuedFrames = new AtomicLong();
    private long framesClaimed;
    private long lastClaimMs;
    private volatile long framesWritten;
@@ -68,7 +86,14 @@ public final class ReplayBuffer implements AutoCloseable {
          }
       }
 
-      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, segmentDir));
+      this.audioServer = settings.gameAudio() ? new ServerSocket(0, 1, InetAddress.getLoopbackAddress()) : null;
+      int audioPort = this.audioServer == null ? 0 : this.audioServer.getLocalPort();
+      this.audioThread = this.audioServer == null ? null : daemon(this::audioLoop, "killclip-audio");
+      if (this.audioThread != null) {
+         this.audioThread.start();
+      }
+
+      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, segmentDir, audioPort));
       builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
       builder.redirectError(segmentDir.resolve("ffmpeg.log").toFile());
       this.ffmpeg = builder.start();
@@ -85,17 +110,22 @@ public final class ReplayBuffer implements AutoCloseable {
       return new ReplayBuffer(settings, width, height, segmentDir, nowMs);
    }
 
-   public static List<String> recordCommand(Settings s, int width, int height, Path segmentDir) {
+   public static List<String> recordCommand(Settings s, int width, int height, Path segmentDir, int audioPort) {
       int outHeight = s.outputHeight() <= 0 || s.outputHeight() >= height ? height : s.outputHeight();
       int outWidth = (int)Math.round((double)width * outHeight / height);
       List<String> cmd = new ArrayList<>(List.of(
          s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin",
          "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()), "-i", "-"
       ));
-      cmd.addAll(s.audioInput());
+      if (s.gameAudio()) {
+         cmd.addAll(List.of("-f", "s16le", "-ar", String.valueOf(AUDIO_RATE), "-ac", "2", "-i", "tcp://127.0.0.1:" + audioPort));
+      } else {
+         cmd.addAll(s.audioInput());
+      }
+
       cmd.addAll(List.of("-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1)));
       cmd.addAll(codecArgs(s.encoder(), s.quality()));
-      if (!s.audioInput().isEmpty()) {
+      if (s.hasAudio()) {
          cmd.addAll(List.of("-c:a", "aac", "-b:a", "160k", "-ar", "48000"));
       }
 
@@ -182,6 +212,79 @@ public final class ReplayBuffer implements AutoCloseable {
       this.carry.addAndGet(copies);
       if (unused != null) {
          this.free.offer(unused);
+      }
+   }
+
+   /** Queues game audio (AUDIO_RATE, s16le stereo). Dropped when the encoder is far behind. */
+   public void pushAudio(byte[] pcm, int length) {
+      if (this.audioThread == null || this.closed || length < AUDIO_FRAME_BYTES) {
+         return;
+      }
+
+      byte[] copy = java.util.Arrays.copyOf(pcm, length - length % AUDIO_FRAME_BYTES);
+      if (this.audioChunks.offer(copy)) {
+         this.audioQueuedFrames.addAndGet(copy.length / AUDIO_FRAME_BYTES);
+      }
+   }
+
+   /**
+    * Feeds FFmpeg exactly as many audio frames as wall-clock time has passed
+    * since the buffer started, taking pushed game audio first and filling
+    * the rest with silence, so audio always lines up with the video frames.
+    */
+   private void audioLoop() {
+      try (ServerSocket server = this.audioServer) {
+         server.setSoTimeout(15000);
+         try (Socket socket = server.accept(); OutputStream out = socket.getOutputStream()) {
+            long written = 0L;
+            byte[] current = null;
+            int offset = 0;
+            byte[] block = new byte[AUDIO_RATE / 10 * AUDIO_FRAME_BYTES];
+            while (!this.closed) {
+               long due = (System.nanoTime() / 1000000L - this.startMs) * AUDIO_RATE / 1000L - written;
+               while (this.audioQueuedFrames.get() > due + AUDIO_BACKLOG_FRAMES) {
+                  byte[] dropped = this.audioChunks.poll();
+                  if (dropped == null) {
+                     break;
+                  }
+
+                  this.audioQueuedFrames.addAndGet(-(dropped.length / AUDIO_FRAME_BYTES));
+               }
+
+               while (due > 0L) {
+                  int frames = (int)Math.min(due, block.length / AUDIO_FRAME_BYTES);
+                  int filled = 0;
+                  while (filled < frames * AUDIO_FRAME_BYTES) {
+                     if (current == null || offset >= current.length) {
+                        current = this.audioChunks.poll();
+                        offset = 0;
+                        if (current == null) {
+                           break;
+                        }
+
+                        this.audioQueuedFrames.addAndGet(-(current.length / AUDIO_FRAME_BYTES));
+                     }
+
+                     int n = Math.min(current.length - offset, frames * AUDIO_FRAME_BYTES - filled);
+                     System.arraycopy(current, offset, block, filled, n);
+                     offset += n;
+                     filled += n;
+                  }
+
+                  java.util.Arrays.fill(block, filled, frames * AUDIO_FRAME_BYTES, (byte)0);
+                  out.write(block, 0, frames * AUDIO_FRAME_BYTES);
+                  written += frames;
+                  due -= frames;
+               }
+
+               Thread.sleep(10L);
+            }
+         }
+      } catch (InterruptedException ignored) {
+      } catch (IOException e) {
+         if (!this.closed) {
+            this.failure = "Game audio feed stopped: " + e.getMessage();
+         }
       }
    }
 
@@ -322,6 +425,14 @@ public final class ReplayBuffer implements AutoCloseable {
 
       this.closed = true;
       this.writer.interrupt();
+      if (this.audioThread != null) {
+         this.audioThread.interrupt();
+         try {
+            this.audioServer.close();
+         } catch (IOException ignored) {
+         }
+      }
+
       try {
          this.writer.join(1000L);
          this.stdin.close();
