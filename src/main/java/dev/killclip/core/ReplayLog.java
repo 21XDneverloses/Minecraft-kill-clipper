@@ -63,6 +63,9 @@ public final class ReplayLog implements AutoCloseable {
    private volatile long flushedTimeMs = -1L;
    private volatile String failure;
    private volatile boolean closed;
+   /** Clip saves still using this log, and whether it should close once they are done. */
+   private int holds;
+   private boolean closeWanted;
 
    public ReplayLog(Path file, long startMs) throws IOException {
       this.file = file;
@@ -138,6 +141,60 @@ public final class ReplayLog implements AutoCloseable {
       return System.nanoTime() / 1000000L - this.startMs;
    }
 
+   /** Keeps the log open for one clip save, or returns null when it is already closed. */
+   public synchronized Hold hold() {
+      if (this.closed || this.closeWanted && this.holds == 0) {
+         return null;
+      }
+
+      this.holds++;
+      return new Hold();
+   }
+
+   /** Closes the log now, or as soon as the last {@link Hold} is released. */
+   public void closeWhenUnused() {
+      synchronized (this) {
+         this.closeWanted = true;
+         if (this.holds > 0) {
+            return;
+         }
+      }
+
+      this.close();
+   }
+
+   private void release() {
+      boolean closeNow;
+      synchronized (this) {
+         this.holds--;
+         closeNow = this.holds == 0 && this.closeWanted;
+      }
+
+      if (closeNow) {
+         this.close();
+      }
+   }
+
+   /** One clip's claim on the log; saving through it releases it when the save ends. */
+   public final class Hold {
+      private boolean released;
+
+      public ReplayLog log() {
+         return ReplayLog.this;
+      }
+
+      public CompletableFuture<Path> saveClip(long fromMs, long toMs, Map<String, String> info, Path output) {
+         return ReplayLog.this.saveClip(fromMs, toMs, info, output).whenComplete((path, error) -> this.release());
+      }
+
+      public synchronized void release() {
+         if (!this.released) {
+            this.released = true;
+            ReplayLog.this.release();
+         }
+      }
+   }
+
    /**
     * Writes a replay covering [fromMs, toMs] (same clock as {@link #append}) to {@code output} once the session
     * log has reached {@code toMs}.
@@ -145,7 +202,8 @@ public final class ReplayLog implements AutoCloseable {
    public CompletableFuture<Path> saveClip(long fromMs, long toMs, Map<String, String> info, Path output) {
       return CompletableFuture.supplyAsync(() -> {
          try {
-            long deadline = System.nanoTime() + 10_000_000_000L;
+            // Wait until the log has reached the clip's end, which may still be in the future.
+            long deadline = System.nanoTime() + Math.max(0L, toMs - System.nanoTime() / 1000000L) * 1_000_000L + 10_000_000_000L;
             while (this.flushedTimeMs < toMs - this.startMs && this.failure == null && !this.closed && System.nanoTime() < deadline) {
                Thread.sleep(50L);
             }

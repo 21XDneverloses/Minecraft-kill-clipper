@@ -40,6 +40,9 @@ public final class ReplayCapture {
    private static ClientConnection connection;
    private static NetworkState<?> state;
    private static ReplayLog log;
+   /** Logs of earlier connections or servers, kept a while so a clip that started there still gets its replay. */
+   private static final java.util.ArrayDeque<ReplayLog> retired = new java.util.ArrayDeque<>();
+   private static final long RETIRED_KEEP_MS = 180000L;
    /** Connections created by replay playback, which must never be recorded. */
    private static ClientConnection ignored;
    private static final ItemStack[] lastGear = new ItemStack[SLOTS.length];
@@ -202,16 +205,42 @@ public final class ReplayCapture {
       }
    }
 
+   /**
+    * Claims the log that holds a clip starting at {@code fromMs}, so a server switch or disconnect before the
+    * video is saved can't swap or close it. Null when nothing was recorded.
+    */
+   static ReplayLog.Hold hold(long fromMs) {
+      synchronized (LOCK) {
+         ReplayLog best = log;
+         if (best == null || best.startMs() > fromMs) {
+            // The clip started before the current log: use the newest earlier log that covers its start.
+            for (java.util.Iterator<ReplayLog> it = retired.descendingIterator(); it.hasNext(); ) {
+               ReplayLog old = it.next();
+               if (old.startMs() <= fromMs) {
+                  best = old;
+                  break;
+               }
+
+               best = best == null ? old : best;
+            }
+         }
+
+         return best == null ? null : best.hold();
+      }
+   }
+
    /** Saves the replay for a clip next to its video. */
    static CompletableFuture<Path> save(long fromMs, long toMs, Path output) {
-      ReplayLog target;
-      synchronized (LOCK) {
-         target = log;
-      }
-
-      if (target == null) {
+      ReplayLog.Hold hold = hold(fromMs);
+      if (hold == null) {
          return CompletableFuture.failedFuture(new IllegalStateException("no server connection was recorded"));
       }
+
+      return save(hold, fromMs, toMs, output);
+   }
+
+   /** Saves the replay for a clip from a log claimed with {@link #hold}; the hold is released when done. */
+   static CompletableFuture<Path> save(ReplayLog.Hold hold, long fromMs, long toMs, Path output) {
 
       MinecraftClient client = MinecraftClient.getInstance();
       Map<String, String> info = new LinkedHashMap<>();
@@ -226,7 +255,7 @@ public final class ReplayCapture {
          info.put("server", client.getCurrentServerEntry().address);
       }
 
-      return target.saveClip(fromMs, toMs, info, output);
+      return hold.saveClip(fromMs, toMs, info, output);
    }
 
    static void stop() {
@@ -241,14 +270,15 @@ public final class ReplayCapture {
       connection = null;
       state = null;
       if (old != null) {
-         // Clip saves still copying from this session finish first; the log closes on its own thread.
-         CompletableFuture.runAsync(() -> {
-            try {
-               Thread.sleep(15000L);
-            } catch (InterruptedException ignored) {
+         // Keep it for clips that started on this server (a win sends you back to the lobby); it closes once
+         // no clip save needs it any more.
+         retired.addLast(old);
+         CompletableFuture.delayedExecutor(RETIRED_KEEP_MS, java.util.concurrent.TimeUnit.MILLISECONDS).execute(() -> {
+            synchronized (LOCK) {
+               retired.remove(old);
             }
 
-            old.close();
+            old.closeWhenUnused();
          });
       }
    }

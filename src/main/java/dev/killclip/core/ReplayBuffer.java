@@ -61,7 +61,8 @@ public final class ReplayBuffer implements AutoCloseable {
    private final BlockingQueue<Frame> queue = new ArrayBlockingQueue<>(QUEUE_FRAMES);
    private final BlockingQueue<byte[]> free = new ArrayBlockingQueue<>(QUEUE_FRAMES + 2);
    private final AtomicInteger carry = new AtomicInteger();
-   private final AtomicLong pinnedSegment = new AtomicLong(Long.MAX_VALUE);
+   /** First segment of each clip being saved, with a count, so pruning never deletes what a pending save needs. */
+   private final java.util.concurrent.ConcurrentSkipListMap<Long, Integer> pinned = new java.util.concurrent.ConcurrentSkipListMap<>();
    private final ExecutorService saver = Executors.newSingleThreadExecutor(r -> daemon(r, "killclip-save"));
    private final Thread writer;
    private final ServerSocket audioServer;
@@ -160,7 +161,8 @@ public final class ReplayBuffer implements AutoCloseable {
       cmd.addAll(List.of(
          "-fps_mode", "cfr", "-r", String.valueOf(s.fps()),
          "-pix_fmt", "yuv420p", "-g", String.valueOf(s.fps()), "-force_key_frames", "expr:gte(t,n_forced*1)",
-         "-f", "segment", "-segment_time", "1", "-segment_format", "mpegts", "-reset_timestamps", "1",
+         // Segments keep one continuous timeline so a clip is the segments joined byte for byte (see saveClip).
+         "-f", "segment", "-segment_time", "1", "-segment_format", "mpegts",
          segmentDir.resolve("seg%06d.ts").toString()
       ));
       return cmd;
@@ -366,7 +368,8 @@ public final class ReplayBuffer implements AutoCloseable {
    }
 
    private void prune(long current) {
-      long keepFrom = Math.min(current - this.settings.bufferSeconds() - 2L, this.pinnedSegment.get());
+      java.util.Map.Entry<Long, Integer> pin = this.pinned.firstEntry();
+      long keepFrom = Math.min(current - this.settings.bufferSeconds() - 2L, pin == null ? Long.MAX_VALUE : pin.getKey());
       try (Stream<Path> files = Files.list(this.segmentDir)) {
          for (Path file : files.toList()) {
             long index = segmentIndex(file);
@@ -399,7 +402,7 @@ public final class ReplayBuffer implements AutoCloseable {
       long oldest = Math.max(0L, this.currentSegment() - this.settings.bufferSeconds());
       long first = Math.max(oldest, Math.max(0L, (fromMs - this.startMs) / 1000L));
       long last = Math.max(first, (toMs - this.startMs) / 1000L);
-      this.pinnedSegment.accumulateAndGet(first, Math::min);
+      this.pinned.merge(first, 1, Integer::sum);
       return CompletableFuture.supplyAsync(() -> {
          try {
             long deadline = System.nanoTime() / 1000000L + Math.max(0L, toMs - System.nanoTime() / 1000000L) + 5000L;
@@ -412,55 +415,62 @@ public final class ReplayBuffer implements AutoCloseable {
                Thread.sleep(100L);
             }
 
-            List<String> lines = new ArrayList<>();
+            List<String> parts = new ArrayList<>();
             for (long k = first; k <= last; k++) {
                Path segment = this.segmentDir.resolve(String.format("seg%06d.ts", k));
                if (Files.isRegularFile(segment)) {
-                  lines.add("file '" + segment.toAbsolutePath().toString().replace("'", "'\\''") + "'");
+                  parts.add(segment.toAbsolutePath().toString());
                }
             }
 
-            if (lines.isEmpty()) {
+            if (parts.isEmpty()) {
                throw new IOException("no recorded video covers that moment");
             }
 
             Files.createDirectories(output.toAbsolutePath().getParent());
-            Path list = this.segmentDir.resolve("concat-" + System.nanoTime() + ".txt");
-            Files.write(list, lines);
-            try {
-               List<String> concatCommand = new ArrayList<>(List.of(
-                  this.settings.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                  "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy"
-               ));
-               String name = output.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-               boolean quickTime = name.endsWith(".mp4") || name.endsWith(".mov");
-               if (quickTime) {
-                  concatCommand.addAll(List.of("-movflags", "+faststart"));
-               }
+            // MPEG-TS segments with one continuous timeline join byte for byte (the concat protocol). The concat
+            // demuxer guesses each segment's length instead, which left a 2-3 frame hitch at many one-second joins.
+            List<String> concatCommand = new ArrayList<>(List.of(
+               this.settings.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+               "-i", "concat:" + String.join("|", parts), "-c", "copy"
+            ));
+            String name = output.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+            boolean quickTime = name.endsWith(".mp4") || name.endsWith(".mov");
+            if (quickTime) {
+               concatCommand.addAll(List.of("-movflags", "+faststart"));
+            }
 
-               if (quickTime && this.settings.encoder().startsWith("hevc")) {
-                  // hvc1 is the H.265 tag Windows and Apple players expect in mp4.
-                  concatCommand.addAll(List.of("-tag:v", "hvc1"));
-               }
+            if (quickTime && this.settings.encoder().startsWith("hevc")) {
+               // hvc1 is the H.265 tag Windows and Apple players expect in mp4.
+               concatCommand.addAll(List.of("-tag:v", "hvc1"));
+            }
 
-               concatCommand.add(output.toString());
-               Process concat = new ProcessBuilder(concatCommand)
-                  .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                  .redirectErrorStream(true)
-                  .start();
-               String log = new String(concat.getInputStream().readAllBytes()).strip();
-               if (!concat.waitFor(60L, TimeUnit.SECONDS) || concat.exitValue() != 0 || !Files.isRegularFile(output)) {
-                  throw new IOException("FFmpeg could not write the clip: " + log);
+            concatCommand.add(output.toString());
+            Process concat = new ProcessBuilder(concatCommand)
+               .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+               .redirectErrorStream(true)
+               .start();
+            CompletableFuture<String> log = CompletableFuture.supplyAsync(() -> {
+               try {
+                  return new String(concat.getInputStream().readAllBytes()).strip();
+               } catch (IOException e) {
+                  return "";
                }
-            } finally {
-               Files.deleteIfExists(list);
+            });
+            if (!concat.waitFor(60L, TimeUnit.SECONDS)) {
+               concat.destroyForcibly();
+               throw new IOException("FFmpeg took over a minute to write the clip");
+            }
+
+            if (concat.exitValue() != 0 || !Files.isRegularFile(output)) {
+               throw new IOException("FFmpeg could not write the clip: " + log.join());
             }
 
             return output;
          } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e.getMessage(), e);
          } finally {
-            this.pinnedSegment.set(Long.MAX_VALUE);
+            this.pinned.computeIfPresent(first, (k, n) -> n > 1 ? n - 1 : null);
          }
       }, this.saver);
    }

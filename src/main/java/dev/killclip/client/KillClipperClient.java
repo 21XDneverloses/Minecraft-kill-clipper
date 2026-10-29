@@ -428,6 +428,8 @@ public final class KillClipperClient implements ClientModInitializer {
          notify("● Saving " + title.toLowerCase() + " clip...", Formatting.AQUA);
       }
 
+      // Claim the fight's replay log now: by the time the video is saved, a win may have moved you to the lobby.
+      dev.killclip.core.ReplayLog.Hold replay = this.config.saveReplays ? ReplayCapture.hold(fromMs) : null;
       this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), this.config.fileFormat, file -> {
          this.clipsSaved++;
          if (manual || this.config.feedback) {
@@ -435,8 +437,12 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          LOGGER.info("Saved clip {}", file);
-         this.saveReplay(fromMs, toMs, file);
+         this.saveReplay(replay, fromMs, toMs, file);
       }, error -> {
+         if (replay != null) {
+            replay.release();
+         }
+
          notify("✗ Clip failed: " + error, Formatting.RED);
          LOGGER.warn("Clip failed: {}", error);
       });
@@ -567,14 +573,18 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
-   private void saveReplay(long fromMs, long toMs, String videoFile) {
-      if (!this.config.saveReplays) {
+   private void saveReplay(dev.killclip.core.ReplayLog.Hold replay, long fromMs, long toMs, String videoFile) {
+      if (replay == null) {
+         if (this.config.saveReplays) {
+            LOGGER.warn("Fight replay not saved: no server connection was recorded");
+         }
+
          return;
       }
 
       int dot = videoFile.lastIndexOf('.');
       String name = dot > 0 ? videoFile.substring(0, dot) : videoFile;
-      ReplayCapture.save(fromMs, toMs, this.config.clipsDir().resolve(name + ".kcreplay")).whenComplete((path, error) -> {
+      ReplayCapture.save(replay, fromMs, toMs, this.config.clipsDir().resolve(name + ".kcreplay")).whenComplete((path, error) -> {
          if (error == null) {
             LOGGER.info("Saved fight replay {}", path.getFileName());
          } else {
