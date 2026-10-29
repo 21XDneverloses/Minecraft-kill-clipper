@@ -521,7 +521,7 @@ public final class KillClipperClient implements ClientModInitializer {
          + " | server: " + this.host() + " | clips saved: " + this.clipsSaved);
       double repeated = this.recorder.repeatedPercent();
       if (repeated >= 0.0) {
-         tell(String.format("Smoothness: %.1f%% of frames repeated%s", repeated,
+         tell(String.format("Smoothness: %.1f%% of frames repeated, game at %d fps%s", repeated, MinecraftClient.getInstance().getCurrentFps(),
             repeated > 10.0 ? " (choppy: try a lower FPS or resolution)" : ""));
       }
       tell("Streak: " + this.config.streakMinKills + "+ kills within " + this.config.streakGapMs / 1000.0 + " s | clips folder: " + this.config.clipsDir().toAbsolutePath());

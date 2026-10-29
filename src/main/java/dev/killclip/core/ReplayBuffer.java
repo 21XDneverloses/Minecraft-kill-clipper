@@ -54,7 +54,8 @@ public final class ReplayBuffer implements AutoCloseable {
    private final Path segmentDir;
    private final long startMs;
    private final Process ffmpeg;
-   private final OutputStream stdin;
+   private final ServerSocket videoServer;
+   private volatile Socket videoSocket;
    private final BlockingQueue<Frame> queue = new ArrayBlockingQueue<>(QUEUE_FRAMES);
    private final BlockingQueue<byte[]> free = new ArrayBlockingQueue<>(QUEUE_FRAMES + 2);
    private final AtomicInteger carry = new AtomicInteger();
@@ -94,11 +95,14 @@ public final class ReplayBuffer implements AutoCloseable {
          this.audioThread.start();
       }
 
-      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, segmentDir, audioPort));
+      // Frames go to FFmpeg over a loopback socket: much faster than a process pipe on Windows.
+      this.videoServer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+      this.videoServer.setSoTimeout(15000);
+      ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, segmentDir, this.videoServer.getLocalPort(), audioPort));
       builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
       builder.redirectError(segmentDir.resolve("ffmpeg.log").toFile());
       this.ffmpeg = builder.start();
-      this.stdin = this.ffmpeg.getOutputStream();
+      this.ffmpeg.getOutputStream().close();
       for (int i = 0; i < QUEUE_FRAMES + 2; i++) {
          this.free.add(new byte[this.frameBytes]);
       }
@@ -111,12 +115,16 @@ public final class ReplayBuffer implements AutoCloseable {
       return new ReplayBuffer(settings, width, height, segmentDir, nowMs);
    }
 
-   public static List<String> recordCommand(Settings s, int width, int height, Path segmentDir, int audioPort) {
+   public static List<String> recordCommand(Settings s, int width, int height, Path segmentDir, int videoPort, int audioPort) {
       int outHeight = s.outputHeight() <= 0 || s.outputHeight() >= height ? height : s.outputHeight();
       int outWidth = (int)Math.round((double)width * outHeight / height);
       List<String> cmd = new ArrayList<>(List.of(
          s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin",
-         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()), "-i", "-"
+         // Each captured frame is sent once and stamped with its arrival time; FFmpeg repeats frames to keep a
+         // constant frame rate, so a slow moment no longer means writing the same 8 MB frame several times.
+         "-use_wallclock_as_timestamps", "1",
+         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", String.valueOf(s.fps()),
+         "-i", "tcp://127.0.0.1:" + videoPort
       ));
       if (s.gameAudio()) {
          cmd.addAll(List.of("-f", "s16le", "-ar", String.valueOf(AUDIO_RATE), "-ac", "2", "-i", "tcp://127.0.0.1:" + audioPort));
@@ -136,6 +144,7 @@ public final class ReplayBuffer implements AutoCloseable {
       }
 
       cmd.addAll(List.of(
+         "-fps_mode", "cfr", "-r", String.valueOf(s.fps()),
          "-pix_fmt", "yuv420p", "-g", String.valueOf(s.fps()), "-force_key_frames", "expr:gte(t,n_forced*1)",
          "-f", "segment", "-segment_time", "1", "-segment_format", "mpegts", "-reset_timestamps", "1",
          segmentDir.resolve("seg%06d.ts").toString()
@@ -305,14 +314,16 @@ public final class ReplayBuffer implements AutoCloseable {
    private void writeLoop() {
       long lastPrune = 0L;
 
-      try {
+      try (Socket socket = this.videoServer.accept()) {
+         socket.setSendBufferSize(Math.max(socket.getSendBufferSize(), this.frameBytes * 2));
+         socket.setTcpNoDelay(true);
+         this.videoSocket = socket;
+         OutputStream out = socket.getOutputStream();
          while (!this.closed) {
             Frame frame = this.queue.poll(250L, TimeUnit.MILLISECONDS);
             if (frame != null) {
-               for (int i = 0; i < frame.copies(); i++) {
-                  this.stdin.write(frame.pixels(), 0, this.frameBytes);
-               }
-
+               out.write(frame.pixels(), 0, this.frameBytes);
+               // The timeline still advances by every claimed frame, so segments stay in step with real time.
                this.framesWritten += frame.copies();
                this.framesRepeated += frame.copies() - 1;
                this.free.offer(frame.pixels());
@@ -457,8 +468,17 @@ public final class ReplayBuffer implements AutoCloseable {
 
       try {
          this.writer.join(1000L);
-         this.stdin.close();
-      } catch (IOException | InterruptedException ignored) {
+      } catch (InterruptedException ignored) {
+      }
+
+      try {
+         Socket socket = this.videoSocket;
+         if (socket != null) {
+            socket.close();
+         }
+
+         this.videoServer.close();
+      } catch (IOException ignored) {
       }
 
       try {
