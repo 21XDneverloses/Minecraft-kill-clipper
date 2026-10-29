@@ -1,43 +1,48 @@
 package dev.killclip.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.killclip.client.GameAudioTap;
 import java.nio.IntBuffer;
 import net.minecraft.client.sound.SoundEngine;
-import org.lwjgl.openal.ALC10;
 import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Opens the sound engine on a loopback device when game audio capture is on. */
+/**
+ * Opens the sound engine on a loopback device when game audio capture is on.
+ *
+ * <p>Uses only injectors whose {@code at} is an array ({@code @Inject}, {@code @WrapOperation}). Loom writes
+ * every {@code at} as an array, and older MixinExtras versions crash on a {@code @Redirect} written that way.
+ */
 @Mixin(SoundEngine.class)
 public abstract class SoundEngineMixin {
    @Shadow
    private long devicePointer;
 
-   @Shadow
-   private static long openDeviceOrFallback(String deviceSpecifier) {
-      throw new AssertionError();
-   }
-
-   @Redirect(method = "init", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/sound/SoundEngine;openDeviceOrFallback(Ljava/lang/String;)J"))
-   private long killclip$openDevice(String deviceSpecifier) {
+   @Inject(method = "openDeviceOrFallback", at = @At("HEAD"), cancellable = true)
+   private static void killclip$openDevice(String deviceSpecifier, CallbackInfoReturnable<Long> cir) {
       long loopback = GameAudioTap.openLoopback(deviceSpecifier);
-      return loopback != 0L ? loopback : openDeviceOrFallback(deviceSpecifier);
+      if (loopback != 0L) {
+         cir.setReturnValue(loopback);
+      }
    }
 
-   @Redirect(method = "init", at = @At(value = "INVOKE", target = "Lorg/lwjgl/openal/ALC10;alcCreateContext(JLjava/nio/IntBuffer;)J", remap = false))
-   private long killclip$createContext(long device, IntBuffer attributes) {
+   @WrapOperation(
+      method = "init",
+      at = @At(value = "INVOKE", target = "Lorg/lwjgl/openal/ALC10;alcCreateContext(JLjava/nio/IntBuffer;)J", remap = false)
+   )
+   private long killclip$createContext(long device, IntBuffer attributes, Operation<Long> original) {
       if (!GameAudioTap.isLoopback(device)) {
-         return ALC10.alcCreateContext(device, attributes);
+         return original.call(device, attributes);
       }
-
       IntBuffer withFormat = GameAudioTap.loopbackAttributes(attributes);
       try {
-         return ALC10.alcCreateContext(device, withFormat);
+         return original.call(device, withFormat);
       } finally {
          MemoryUtil.memFree(withFormat);
       }
