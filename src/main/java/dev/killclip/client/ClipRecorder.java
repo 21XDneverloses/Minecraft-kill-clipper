@@ -298,13 +298,13 @@ public final class ClipRecorder {
    }
 
    /** Saves [fromMs, toMs] (monotonic ms) to the clips folder; the callback runs on the client thread. */
-   public void save(long fromMs, long toMs, String label, Path clipsDir, Consumer<String> done, Consumer<String> failed) {
+   public void save(long fromMs, long toMs, String label, Path clipsDir, String format, Consumer<String> done, Consumer<String> failed) {
       if (this.buffer == null) {
          failed.accept(this.lastError.isEmpty() ? "recording is not running" : this.lastError);
          return;
       }
 
-      Path output = clipsDir.resolve(LocalDateTime.now().format(FILE_TIME) + "_" + label + ".mp4");
+      Path output = clipsDir.resolve(LocalDateTime.now().format(FILE_TIME) + "_" + label + "." + format);
       this.buffer.saveClip(fromMs, toMs, output).whenComplete((path, error) -> MinecraftClient.getInstance().execute(() -> {
          if (error == null) {
             done.accept(path.getFileName().toString());

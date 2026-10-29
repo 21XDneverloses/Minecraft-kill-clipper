@@ -16,6 +16,7 @@ public final class KillClipSettingsScreen extends Screen {
    private static final List<Integer> FPS = List.of(30, 60, 120);
    private static final List<Integer> RESOLUTIONS = List.of(480, 720, 1080, 1440, 0);
    private static final List<Integer> QUALITIES = List.of(28, 23, 18);
+   private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
    private static final List<String> ENCODERS = List.of("libx264", "h264_nvenc", "hevc_nvenc", "h264_amf", "h264_qsv");
    private static final List<Integer> BUFFERS = List.of(15, 30, 60, 90);
    private static final List<Integer> STREAK_KILLS = List.of(2, 3, 4, 5);
@@ -42,7 +43,8 @@ public final class KillClipSettingsScreen extends Screen {
          c -> c.resolution = next(RESOLUTIONS, c.resolution));
       this.button(x, y + 72, 148, () -> "Quality: " + qualityName(this.draft.quality), c -> c.quality = next(QUALITIES, c.quality));
       this.button(x + 152, y + 72, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
-      this.button(x, y + 144, 300, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
+      this.button(x + 152, y + 144, 148, () -> "File type: " + this.draft.fileFormat.toUpperCase(java.util.Locale.ROOT), c -> c.fileFormat = next(FORMATS, c.fileFormat));
+      this.button(x, y + 144, 148, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
       this.button(x, y + 96, 148, () -> "Buffer: " + this.draft.bufferSeconds + " s", c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
       this.button(x + 152, y + 96, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
       this.button(x, y + 120, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
@@ -77,7 +79,7 @@ public final class KillClipSettingsScreen extends Screen {
    private static String audioName(String source) {
       return switch (source) {
          case "game" -> "Game only";
-         case "system" -> "Whole computer (set audioDevice)";
+         case "system" -> "Whole PC";
          default -> "Off";
       };
    }

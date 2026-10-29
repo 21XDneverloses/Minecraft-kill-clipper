@@ -430,9 +430,15 @@ public final class ReplayBuffer implements AutoCloseable {
             try {
                List<String> concatCommand = new ArrayList<>(List.of(
                   this.settings.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                  "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy", "-movflags", "+faststart"
+                  "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy"
                ));
-               if (this.settings.encoder().startsWith("hevc")) {
+               String name = output.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+               boolean quickTime = name.endsWith(".mp4") || name.endsWith(".mov");
+               if (quickTime) {
+                  concatCommand.addAll(List.of("-movflags", "+faststart"));
+               }
+
+               if (quickTime && this.settings.encoder().startsWith("hevc")) {
                   // hvc1 is the H.265 tag Windows and Apple players expect in mp4.
                   concatCommand.addAll(List.of("-tag:v", "hvc1"));
                }

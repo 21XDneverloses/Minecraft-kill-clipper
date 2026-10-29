@@ -21,6 +21,7 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class ClipConfig {
    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
    public static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("killclipper.json");
+   public static final Set<String> FORMATS = Set.of("mp4", "mov", "mkv");
    public static final Set<String> ENCODERS = Set.of("libx264", "h264_nvenc", "hevc_nvenc", "h264_amf", "h264_qsv");
    /** Bumped when a default changes so older config files pick it up. */
    public int configVersion = 0;
@@ -30,6 +31,8 @@ public final class ClipConfig {
    public boolean trackHits = true;
    /** Count kill messages in unknown wording when they say you killed an online player. */
    public boolean guessKills = true;
+   /** Also save each clip's fight as a replay, so the editor can show it from any camera. */
+   public boolean saveReplays = true;
    public int hitWindowMs = 10000;
    public int streakMinKills = 2;
    public int streakGapMs = 10000;
@@ -38,6 +41,8 @@ public final class ClipConfig {
    public int resolution = 1080;
    public int quality = 23;
    public String encoder = "libx264";
+   /** Video file type for saved clips. */
+   public String fileFormat = "mp4";
    public int bufferSeconds = 30;
    public String audioSource = "game";
    public String audioDevice = "";
@@ -90,6 +95,7 @@ public final class ClipConfig {
       require(this.resolution == 0 || this.resolution >= 240 && this.resolution <= 2160, "resolution must be 0 (native) or 240..2160");
       require(this.quality >= 0 && this.quality <= 51, "quality must be 0..51 (lower is better)");
       require(this.encoder != null && ENCODERS.contains(this.encoder), "encoder must be one of " + ENCODERS);
+      require(this.fileFormat != null && FORMATS.contains(this.fileFormat), "fileFormat must be one of " + FORMATS);
       require(this.bufferSeconds >= 10 && this.bufferSeconds <= 120, "bufferSeconds must be 10..120");
       require(Set.of("off", "game", "system").contains(this.audioSource), "audioSource must be off, game or system");
       require(this.preRollMs >= 0 && this.preRollMs <= 30000, "preRollMs must be 0..30000");

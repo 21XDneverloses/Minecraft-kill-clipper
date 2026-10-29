@@ -82,6 +82,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
    private final long launchMs = nowMs();
    private boolean selfTestDone;
+   private boolean devConnected;
 
    public static KillClipperClient instance() {
       return INSTANCE;
@@ -90,6 +91,7 @@ public final class KillClipperClient implements ClientModInitializer {
    public void onInitializeClient() {
       INSTANCE = this;
       Path clipDir = FabricLoader.getInstance().getGameDir().resolve("killclips");
+      ReplayCapture.init(clipDir.resolve(".replay"));
       this.recorder = new ClipRecorder(clipDir.resolve(".buffer"), clipDir.resolve(".ffmpeg"), message -> {
          LOGGER.warn("Recorder: {}", message);
          MinecraftClient.getInstance().execute(() -> tell("Recorder: " + message));
@@ -116,6 +118,7 @@ public final class KillClipperClient implements ClientModInitializer {
       ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
          this.finishCapture();
          this.reset();
+         ReplayCapture.stop();
       });
       ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
          this.finishCapture();
@@ -149,6 +152,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          this.trackProjectileHits(client);
+         ReplayCapture.recordSelf(client);
          if (client.player != null && client.player.isDead()) {
             this.lastSelfDeathMs = nowMs();
          }
@@ -398,13 +402,14 @@ public final class KillClipperClient implements ClientModInitializer {
          notify("● Saving " + title.toLowerCase() + " clip...", Formatting.AQUA);
       }
 
-      this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), file -> {
+      this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), this.config.fileFormat, file -> {
          this.clipsSaved++;
          if (manual || this.config.feedback) {
             notify("✓ " + title + " clip saved", Formatting.GREEN);
          }
 
          LOGGER.info("Saved clip {}", file);
+         this.saveReplay(fromMs, toMs, file);
       }, error -> {
          notify("✗ Clip failed: " + error, Formatting.RED);
          LOGGER.warn("Clip failed: {}", error);
@@ -415,6 +420,7 @@ public final class KillClipperClient implements ClientModInitializer {
       Map<String, List<Pattern>> compiled = new HashMap<>();
       next.serverPatterns.forEach((server, patterns) -> compiled.put(KillRules.normalizeHost(server), patterns.stream().map(Pattern::compile).toList()));
       this.config = next;
+      ReplayCapture.setEnabled(next.saveReplays);
       this.serverPatterns = compiled;
       Set<String> allRules = new java.util.LinkedHashSet<>();
       next.serverPatterns.values().forEach(allRules::addAll);
@@ -466,12 +472,52 @@ public final class KillClipperClient implements ClientModInitializer {
 
    /** Dev check: -Dkillclip.selfTestClipSeconds=N saves a test clip N seconds after launch, without a world. */
    private void runSelfTest() {
+      String devServer = System.getProperty("killclip.devConnect", "");
+      MinecraftClient mc = MinecraftClient.getInstance();
+      if (!devServer.isEmpty() && !this.devConnected && mc.currentScreen instanceof net.minecraft.client.gui.screen.TitleScreen) {
+         // Dev check: join a local test server so the replay capture can be tested over a real connection.
+         this.devConnected = true;
+         net.minecraft.client.network.ServerInfo info = new net.minecraft.client.network.ServerInfo("dev", devServer, net.minecraft.client.network.ServerInfo.ServerType.OTHER);
+         net.minecraft.client.gui.screen.multiplayer.ConnectScreen.connect(mc.currentScreen, mc, net.minecraft.client.network.ServerAddress.parse(devServer), info, false, null);
+      }
+
       if (SELF_TEST_MS > 0L && !this.selfTestDone && nowMs() - this.launchMs >= SELF_TEST_MS) {
          this.selfTestDone = true;
          long now = nowMs();
-         this.recorder.save(now - 10000L, now, "selftest", this.config.clipsDir(),
+         this.recorder.save(now - 10000L, now, "selftest", this.config.clipsDir(), this.config.fileFormat,
             file -> LOGGER.info("KILLCLIP_SELFTEST_CLIP saved {}", file), error -> LOGGER.error("KILLCLIP_SELFTEST_CLIP failed: {}", error));
+         ReplayCapture.save(now - 10000L, now, this.config.clipsDir().resolve("selftest.kcreplay")).whenComplete((path, error) -> {
+            if (error != null) {
+               LOGGER.info("KILLCLIP_SELFTEST_REPLAY none: {}", error.getMessage());
+               return;
+            }
+
+            MinecraftClient.getInstance().execute(() -> {
+               try {
+                  LOGGER.info("KILLCLIP_SELFTEST_REPLAY {} bytes: {}", java.nio.file.Files.size(path),
+                     ReplayCheck.verify(path, MinecraftClient.getInstance().world.getRegistryManager()));
+               } catch (Exception e) {
+                  LOGGER.error("KILLCLIP_SELFTEST_REPLAY failed", e);
+               }
+            });
+         });
       }
+   }
+
+   private void saveReplay(long fromMs, long toMs, String videoFile) {
+      if (!this.config.saveReplays) {
+         return;
+      }
+
+      int dot = videoFile.lastIndexOf('.');
+      String name = dot > 0 ? videoFile.substring(0, dot) : videoFile;
+      ReplayCapture.save(fromMs, toMs, this.config.clipsDir().resolve(name + ".kcreplay")).whenComplete((path, error) -> {
+         if (error == null) {
+            LOGGER.info("Saved fight replay {}", path.getFileName());
+         } else {
+            LOGGER.warn("Fight replay not saved: {}", error.getMessage());
+         }
+      });
    }
 
    /** Saves the last 10 seconds right now. */
