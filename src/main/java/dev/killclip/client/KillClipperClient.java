@@ -4,6 +4,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.killclip.core.HitTracker;
 import dev.killclip.core.KillDeduplicator;
 import dev.killclip.core.KillRules;
+import dev.killclip.core.ServerDefaults;
 import dev.killclip.core.StreakTracker;
 import dev.killclip.core.VanillaDeathMessages;
 import java.nio.file.Files;
@@ -71,6 +72,8 @@ public final class KillClipperClient implements ClientModInitializer {
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
    private boolean started;
+   private static final List<Pattern> UNIVERSAL_RULES = ServerDefaults.UNIVERSAL.stream().map(rule -> Pattern.compile(rule, Pattern.CASE_INSENSITIVE)).toList();
+   private List<Pattern> allServerRules = List.of();
    private long lastSelfDeathMs = Long.MIN_VALUE / 2;
    /** A player hit this recently counts as killed if the match ends and you are sent away while alive. */
    private static final long MATCH_END_HIT_MS = 5000L;
@@ -228,6 +231,15 @@ public final class KillClipperClient implements ClientModInitializer {
 
             if (kill.isEmpty()) {
                kill = KillRules.fromMessage(message.getString(), this.serverRules(this.host()), local, online);
+            }
+
+            if (kill.isEmpty()) {
+               // Rules from every known server, then common kill-message shapes, on any server.
+               kill = KillRules.fromMessage(message.getString(), this.allServerRules, local, online);
+            }
+
+            if (kill.isEmpty()) {
+               kill = KillRules.searchMessage(message.getString(), UNIVERSAL_RULES, local, online);
             }
 
             kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
@@ -398,6 +410,10 @@ public final class KillClipperClient implements ClientModInitializer {
       next.serverPatterns.forEach((server, patterns) -> compiled.put(KillRules.normalizeHost(server), patterns.stream().map(Pattern::compile).toList()));
       this.config = next;
       this.serverPatterns = compiled;
+      Set<String> allRules = new java.util.LinkedHashSet<>();
+      next.serverPatterns.values().forEach(allRules::addAll);
+      ServerDefaults.patterns().values().forEach(allRules::addAll);
+      this.allServerRules = allRules.stream().map(Pattern::compile).toList();
       boolean gameAudio = "game".equals(next.audioSource);
       if (gameAudio != GameAudioTap.wanted()) {
          GameAudioTap.setWanted(gameAudio);

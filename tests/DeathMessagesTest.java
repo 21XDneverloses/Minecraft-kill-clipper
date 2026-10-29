@@ -1,4 +1,6 @@
 import dev.killclip.core.KillRules;
+import dev.killclip.core.ServerDefaults;
+import java.util.regex.Pattern;
 import dev.killclip.core.VanillaDeathMessages;
 import java.util.Set;
 
@@ -14,6 +16,19 @@ public final class DeathMessagesTest {
       check(KillRules.fromMessage("Bob tried to swim in lava to escape Me", patterns, "Me", online).isPresent(), "lava escape counts");
       check(KillRules.fromMessage("Bob hit the ground too hard while trying to escape Me", patterns, "Me", online).isPresent(), "fall escape counts");
       check(KillRules.fromMessage("Me was blown up by Bob", patterns, "Me", online).isEmpty(), "your own death is not a kill");
+      var universal = ServerDefaults.UNIVERSAL.stream().map(r -> Pattern.compile(r, Pattern.CASE_INSENSITIVE)).toList();
+      for (String line : new String[] {
+         "☠ Bob has been killed by Me", "[Duels] Me killed Bob (4.5❤)", "Bob was slain by Me 3/20 ❤", "Bob was blown up by Me",
+         "Bob lost the duel to Me", "Me won the duel against Bob", "Bob was knocked into the void by Me", "[VIP] Me eliminated [MVP] Bob!",
+         "Bob was shot by Me using [Bow]", "Me crystalled Bob", "Bob was crystaled by Me", "Bob was popped by Me", "Me blew up Bob", "Bob was blown up by Me using End Crystal", "Bob was anchored by Me"
+      }) {
+         check(KillRules.searchMessage(line, universal, "Me", online).isPresent(), "universal: " + line);
+      }
+      for (String line : new String[] {
+         "Bob: Me killed Bob lol", "<Bob> Me killed Bob", "Bob killed Me", "Bob was invited by Me", "Me -> Bob: hi", "Carl was killed by Me"
+      }) {
+         check(KillRules.searchMessage(line, universal, "Me", online).isEmpty(), "not a kill: " + line);
+      }
       System.out.println("all DeathMessages checks passed");
    }
 

@@ -41,6 +41,31 @@ public final class KillRules {
       }
    }
 
+   /** Like {@link #fromMessage}, but each pattern may match anywhere in the line. */
+   public static Optional<KillRules.Kill> searchMessage(String message, List<Pattern> patterns, String local, Set<String> online) {
+      String plain = clean(message);
+      if (plain.length() > 1024) {
+         return Optional.empty();
+      }
+
+      for (Pattern pattern : patterns) {
+         Matcher match = pattern.matcher(plain);
+         while (match.find()) {
+            if (plain.substring(0, match.start()).contains(":") || plain.substring(0, match.start()).contains("<")) {
+               // Text after "Name:" or "<Name>" is a player talking, not a kill message.
+               continue;
+            }
+
+            Optional<KillRules.Kill> result = validate(match.group("killer"), match.group("victim"), local, online);
+            if (result.isPresent()) {
+               return result;
+            }
+         }
+      }
+
+      return Optional.empty();
+   }
+
    private static Optional<KillRules.Kill> validate(String killer, String victim, String local, Set<String> online) {
       return killer.equals(local) && !victim.equals(local) && online.contains(victim) ? Optional.of(new KillRules.Kill(killer, victim)) : Optional.empty();
    }

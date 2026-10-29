@@ -10,6 +10,23 @@ public final class ServerDefaults {
    public static final String HQ = "^(?:[⚔☠✘✖]️?\\s*)?(?<victim>[A-Za-z0-9_]{1,16}) has been killed by (?<killer>[A-Za-z0-9_]{1,16})\\.?$";
    public static final String MCPVP = "^(?:[^\\r\\n:]{1,48}\\|\\s*)?(?<victim>[A-Za-z0-9_]{1,16}) was slain by (?<killer>[A-Za-z0-9_]{1,16})(?:\\s+\\d+(?:\\.\\d+)?/\\d+(?:\\.\\d+)?\\s*[♥❤]️?)?$";
 
+   private static final String NAME = "(?:[\\[(][^\\])]{1,16}[\\])]\\s*)?(?<![A-Za-z0-9_])(?<%s>[A-Za-z0-9_]{1,16})(?![A-Za-z0-9_])";
+   private static final String KILLER = String.format(NAME, "killer");
+   private static final String VICTIM = String.format(NAME, "victim");
+
+   /**
+    * Kill-message shapes used by many servers, searched anywhere in a chat line so rank tags, emoji and
+    * health suffixes around them do not matter. A match only counts when you are the killer and the
+    * victim is a player who was online, so these are safe to use on every server.
+    */
+   public static final List<String> UNIVERSAL = List.of(
+      KILLER + "\\s+(?:has\\s+|just\\s+)?(?:killed|slain|slew|slayed|eliminated|destroyed|defeated|murdered|finished(?:\\s+off)?|obliterated|annihilated|clapped|wrecked|rekt|pwned|bested|sniped|one-?tapped|crystall?ed|crystal\\'?d|popped|anchored|bombed|nuked|exploded|blew\\s+up)\\s+" + VICTIM,
+      VICTIM + "\\s+(?:has\\s+been|was|got)\\s+(?:killed|slain|eliminated|destroyed|defeated|murdered|finished\\s+off|obliterated|annihilated|clapped|bested|sniped|one-?tapped|blown\\s+up|crystall?ed|crystal\\'?d|popped|anchored|bombed|nuked|exploded|shot|knocked\\s+(?:out|off|into\\s+the\\s+void)|pushed\\s+(?:off|into\\s+the\\s+void)|thrown\\s+(?:off|into\\s+the\\s+void)|doomed\\s+to\\s+fall)\\s+(?:\\S+\\s+){0,3}?by\\s+" + KILLER,
+      VICTIM + "\\s+(?:died|fell|perished|lost(?:\\s+the\\s+(?:duel|fight|match|round))?)\\s+(?:to|against)\\s+" + KILLER,
+      KILLER + "\\s+(?:won|has\\s+won|beat)\\s+(?:the\\s+(?:duel|fight|match|round)\\s+)?(?:against|vs\\.?|versus)\\s+" + VICTIM,
+      KILLER + "\\s+beat\\s+" + VICTIM
+   );
+
    private ServerDefaults() {
    }
 
