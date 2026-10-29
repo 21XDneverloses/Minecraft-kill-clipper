@@ -22,11 +22,13 @@ public final class ClipConfig {
    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
    public static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("killclipper.json");
    public static final Set<String> ENCODERS = Set.of("libx264", "h264_nvenc", "h264_amf", "h264_qsv");
+   /** Bumped when a default changes so older config files pick it up. */
+   public int configVersion = 0;
    public boolean enabled = true;
    public boolean feedback = true;
    public int duplicateWindowMs = 3000;
    public boolean trackHits = true;
-   public int hitWindowMs = 6000;
+   public int hitWindowMs = 10000;
    public int streakMinKills = 2;
    public int streakGapMs = 10000;
    public boolean recording = true;
@@ -48,6 +50,7 @@ public final class ClipConfig {
    public static ClipConfig load() throws IOException {
       if (!Files.exists(PATH)) {
          ClipConfig config = new ClipConfig();
+         config.configVersion = 2;
          config.save();
          return config;
       } else {
@@ -58,6 +61,13 @@ public final class ClipConfig {
             }
 
             config.validate();
+            if (config.configVersion < 2) {
+               // 1.1.4: longer hit window so lava and fall deaths after a hit still count.
+               config.hitWindowMs = Math.max(config.hitWindowMs, 10000);
+               config.configVersion = 2;
+               config.save();
+            }
+
             return config;
          } catch (RuntimeException e) {
             throw new IOException("Invalid config: " + e.getMessage(), e);
@@ -73,7 +83,7 @@ public final class ClipConfig {
       require(this.streakMinKills >= 2 && this.streakMinKills <= 20, "streakMinKills must be 2..20");
       require(this.streakGapMs >= 1000 && this.streakGapMs <= 60000, "streakGapMs must be 1000..60000");
       require(this.duplicateWindowMs >= 100 && this.duplicateWindowMs <= 3000, "duplicateWindowMs must be 100..3000");
-      require(this.hitWindowMs >= 1000 && this.hitWindowMs <= 15000, "hitWindowMs must be 1000..15000");
+      require(this.hitWindowMs >= 1000 && this.hitWindowMs <= 30000, "hitWindowMs must be 1000..30000");
       require(this.fps >= 15 && this.fps <= 120, "fps must be 15..120");
       require(this.resolution == 0 || this.resolution >= 240 && this.resolution <= 2160, "resolution must be 0 (native) or 240..2160");
       require(this.quality >= 0 && this.quality <= 51, "quality must be 0..51 (lower is better)");

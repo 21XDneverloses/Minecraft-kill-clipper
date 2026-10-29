@@ -29,6 +29,15 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.minecraft.block.BedBlock;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.decoration.EndCrystalEntity;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ServerInfo;
@@ -47,7 +56,6 @@ public final class KillClipperClient implements ClientModInitializer {
    private static KillClipperClient INSTANCE;
    public static final Logger LOGGER = LoggerFactory.getLogger("killclipper");
    private Language patternLanguage;
-   private List<Pattern> vanillaPatterns = List.of();
    private List<Pattern> decoratedPatterns = List.of();
    private final KillDeduplicator duplicates = new KillDeduplicator();
    private final HitTracker hits = new HitTracker();
@@ -63,6 +71,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
    private boolean started;
+   private static final double EXPLOSION_RANGE = 12.0;
    private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
    private final long launchMs = nowMs();
    private boolean selfTestDone;
@@ -108,6 +117,21 @@ public final class KillClipperClient implements ClientModInitializer {
       AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
          if (world.isClient() && entity instanceof PlayerEntity victim && victim != player) {
             this.hits.onHit(victim.getGameProfile().name(), nowMs());
+         } else if (world.isClient() && entity instanceof EndCrystalEntity) {
+            // Crystal PvP: everyone near the crystal you pop is in the blast.
+            this.markPlayersNear(world, entity.getEntityPos(), player);
+         }
+
+         return ActionResult.PASS;
+      });
+      UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+         if (world.isClient()) {
+            BlockState state = world.getBlockState(hitResult.getBlockPos());
+            boolean anchor = state.isOf(Blocks.RESPAWN_ANCHOR);
+            boolean bed = state.getBlock() instanceof BedBlock && world.getRegistryKey() != World.OVERWORLD;
+            if (anchor || bed) {
+               this.markPlayersNear(world, Vec3d.ofCenter(hitResult.getBlockPos()), player);
+            }
          }
 
          return ActionResult.PASS;
@@ -117,6 +141,7 @@ public final class KillClipperClient implements ClientModInitializer {
             this.finishCapture();
          }
 
+         this.trackProjectileHits(client);
          this.checkHitPlayers(client);
          this.runSelfTest();
          this.streaks.flush(nowMs()).ifPresent(this::saveStreakClip);
@@ -190,11 +215,11 @@ public final class KillClipperClient implements ClientModInitializer {
             Optional<KillRules.Kill> kill = this.findTranslation(message, local, online);
             this.refreshVanillaPatterns();
             if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.host().equals("mcpvp.com") ? this.decoratedPatterns : this.vanillaPatterns, local, online);
+               kill = KillRules.fromMessage(message.getString(), this.decoratedPatterns, local, online);
             }
 
             if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.serverPatterns.getOrDefault(this.host(), List.of()), local, online);
+               kill = KillRules.fromMessage(message.getString(), this.serverRules(this.host()), local, online);
             }
 
             kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
@@ -212,7 +237,36 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
-   /** Credits a kill when a player you hit recently is now dead, on any server. */
+   /** Counts players near an explosion you set off (crystal, anchor, bed) as hit by you. */
+   private void markPlayersNear(World world, Vec3d center, PlayerEntity self) {
+      for (PlayerEntity other : world.getPlayers()) {
+         if (other != self && other.squaredDistanceTo(center) <= EXPLOSION_RANGE * EXPLOSION_RANGE) {
+            this.hits.onHit(other.getGameProfile().name(), nowMs());
+         }
+      }
+   }
+
+   /** Counts a player as hit when one of your arrows, tridents or other projectiles reaches them. */
+   private void trackProjectileHits(MinecraftClient client) {
+      if (!this.config.trackHits || client.world == null || client.player == null) {
+         return;
+      }
+
+      for (Entity entity : client.world.getEntities()) {
+         if (entity instanceof ProjectileEntity projectile && projectile.getOwner() == client.player) {
+            for (PlayerEntity other : client.world.getPlayers()) {
+               if (other != client.player && other.getBoundingBox().expand(1.0).intersects(projectile.getBoundingBox())) {
+                  this.hits.onHit(other.getGameProfile().name(), nowMs());
+               }
+            }
+         }
+      }
+   }
+
+   /**
+    * Credits a kill when a player you hit recently is now dead, on any server. The cause of death does not
+    * matter: lava, falling, fire, the void or anything else after your hit counts.
+    */
    private void checkHitPlayers(MinecraftClient client) {
       if (!this.config.enabled || !this.config.trackHits || client.world == null || !this.allowed()) {
          return;
@@ -271,7 +325,6 @@ public final class KillClipperClient implements ClientModInitializer {
                templates.add(localized);
             }
          });
-         this.vanillaPatterns = VanillaDeathMessages.compile(templates, false);
          this.decoratedPatterns = VanillaDeathMessages.compile(templates, true);
          this.patternLanguage = language;
       }
@@ -420,6 +473,19 @@ public final class KillClipperClient implements ClientModInitializer {
          + " | server: " + this.host() + " | clips saved: " + this.clipsSaved);
       tell("Streak: " + this.config.streakMinKills + "+ kills within " + this.config.streakGapMs / 1000.0 + " s | clips folder: " + this.config.clipsDir().toAbsolutePath());
       return 1;
+   }
+
+   /** Chat rules for a host, including rules for its parent domains (nae.mcpvp.club uses mcpvp.club's). */
+   private List<Pattern> serverRules(String host) {
+      List<Pattern> rules = new ArrayList<>();
+      this.serverPatterns.forEach((key, patterns) -> {
+         boolean sameNetwork = host.equals(key) || host.endsWith("." + key)
+            || (host.contains("mcpvp") && key.contains("mcpvp"));
+         if (sameNetwork) {
+            rules.addAll(patterns);
+         }
+      });
+      return rules;
    }
 
    private boolean allowed() {

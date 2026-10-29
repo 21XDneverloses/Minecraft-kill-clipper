@@ -4,7 +4,7 @@ A Fabric client mod for Minecraft 1.21.11. It keeps a rolling replay buffer of y
 
 ## What it does
 
-- **Kills:** detected from vanilla death messages and per-server chat rules. It also counts a kill when a player you hit dies within a few seconds (`trackHits`, `hitWindowMs`), which works on any server.
+- **Kills:** detected from vanilla death messages and per-server chat rules. It also counts a kill when a player you damaged dies within 10 seconds (`trackHits`, `hitWindowMs`), whatever kills them: lava, falling, fire, the void. Melee hits, your arrows and tridents, and crystals, respawn anchors and beds you set off near a player all count. This works on any server.
 - **Streaks:** kills within the streak window (default 10 s) are grouped into one clip. Two or more kills count as a streak (`streakMinKills`).
 - **Clips:** saved to `.minecraft/killclips/`. Each clip starts a few seconds before the first kill (`preRollMs`) and runs past the last one (`postRollMs`).
 - **Settings:** Mod Menu or `/killclip menu`. FPS, resolution, quality, encoder (CPU, NVIDIA, AMD, Intel), buffer length, audio, and streak options.
