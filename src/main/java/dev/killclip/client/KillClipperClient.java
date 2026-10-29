@@ -249,29 +249,30 @@ public final class KillClipperClient implements ClientModInitializer {
       if (this.config.enabled && client.player != null && client.getNetworkHandler() != null && this.allowed()) {
          String local = client.player.getGameProfile().name();
          String plain = message.getString();
-         if (plain.contains(local)) {
+         if (KillRules.mentionsYou(plain, local)) {
             Set<String> online = this.recentPlayers.keySet();
             Optional<KillRules.Kill> kill = this.findTranslation(message, local, online);
             this.refreshVanillaPatterns();
+            String named = KillRules.youAsName(plain, local, online);
             if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.decoratedPatterns, local, online);
+               kill = KillRules.fromMessage(named, this.decoratedPatterns, local, online);
             }
 
             if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.serverRules(this.host()), local, online);
+               kill = KillRules.fromMessage(named, this.serverRules(this.host()), local, online);
             }
 
             if (kill.isEmpty()) {
                // Rules from every known server, then common kill-message shapes, on any server.
-               kill = KillRules.fromMessage(message.getString(), this.allServerRules, local, online);
+               kill = KillRules.fromMessage(named, this.allServerRules, local, online);
             }
 
             if (kill.isEmpty()) {
-               kill = KillRules.searchMessage(message.getString(), UNIVERSAL_RULES, local, online);
+               kill = KillRules.searchMessage(named, UNIVERSAL_RULES, local, online);
             }
 
             if (kill.isEmpty() && this.config.guessKills) {
-               kill = KillRules.guess(message.getString(), local, online);
+               kill = KillRules.guess(plain, local, online);
             }
 
             kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
