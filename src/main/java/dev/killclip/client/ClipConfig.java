@@ -28,6 +28,8 @@ public final class ClipConfig {
    public boolean feedback = true;
    public int duplicateWindowMs = 3000;
    public boolean trackHits = true;
+   /** Count kill messages in unknown wording when they say you killed an online player. */
+   public boolean guessKills = true;
    public int hitWindowMs = 10000;
    public int streakMinKills = 2;
    public int streakGapMs = 10000;

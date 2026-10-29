@@ -242,6 +242,10 @@ public final class KillClipperClient implements ClientModInitializer {
                kill = KillRules.searchMessage(message.getString(), UNIVERSAL_RULES, local, online);
             }
 
+            if (kill.isEmpty() && this.config.guessKills) {
+               kill = KillRules.guess(message.getString(), local, online);
+            }
+
             kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
          }
       }
