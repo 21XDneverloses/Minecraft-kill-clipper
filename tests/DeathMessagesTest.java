@@ -10,7 +10,7 @@ public final class DeathMessagesTest {
       check(templates.size() > 20, "credited death messages load from the jar");
       check(templates.get("death.attack.arrow").contains("%2$s"), "arrow death names the killer");
       var patterns = VanillaDeathMessages.compile(templates.values(), true);
-      Set<String> online = Set.of("Me", "Bob");
+      Set<String> online = Set.of("Me", "Bob", "Locked_Gears");
       check(KillRules.fromMessage("Bob was blown up by Me", patterns, "Me", online).isPresent(), "plain crystal kill message counts");
       check(KillRules.fromMessage("[Duels] | Bob was blown up by Me 6.5/20 ❤", patterns, "Me", online).isPresent(), "decorated crystal kill message counts");
       check(KillRules.fromMessage("Bob tried to swim in lava to escape Me", patterns, "Me", online).isPresent(), "lava escape counts");
@@ -20,7 +20,7 @@ public final class DeathMessagesTest {
       for (String line : new String[] {
          "☠ Bob has been killed by Me", "[Duels] Me killed Bob (4.5❤)", "Bob was slain by Me 3/20 ❤", "Bob was blown up by Me",
          "Bob lost the duel to Me", "Me won the duel against Bob", "Bob was knocked into the void by Me", "[VIP] Me eliminated [MVP] Bob!",
-         "Bob was shot by Me using [Bow]", "Me crystalled Bob", "Bob was crystaled by Me", "Bob was popped by Me", "Me blew up Bob", "Bob was blown up by Me using End Crystal", "Bob was anchored by Me"
+         "Bob was shot by Me using [Bow]", "Me crystalled Bob", "Bob was crystaled by Me", "Bob was popped by Me", "Me blew up Bob", "Bob was blown up by Me using End Crystal", "Bob was anchored by Me", "🗡 Locked_Gears has been killed by Me."
       }) {
          check(KillRules.searchMessage(line, universal, "Me", online).isPresent(), "universal: " + line);
       }

@@ -7,7 +7,7 @@ import java.util.Map;
 
 public final class ServerDefaults {
    public static final String FLOW = "^(?<killer>[A-Za-z0-9_]{1,16}) has killed (?<victim>[A-Za-z0-9_]{1,16})\\.$";
-   public static final String HQ = "^(?:[⚔☠✘✖]️?\\s*)?(?<victim>[A-Za-z0-9_]{1,16}) has been killed by (?<killer>[A-Za-z0-9_]{1,16})\\.?$";
+   public static final String HQ = "^(?:[⚔🗡☠✘✖]️?\\s*)?(?<victim>[A-Za-z0-9_]{1,16}) has been killed by (?<killer>[A-Za-z0-9_]{1,16})\\.?$";
    public static final String MCPVP = "^(?:[^\\r\\n:]{1,48}\\|\\s*)?(?<victim>[A-Za-z0-9_]{1,16}) was slain by (?<killer>[A-Za-z0-9_]{1,16})(?:\\s+\\d+(?:\\.\\d+)?/\\d+(?:\\.\\d+)?\\s*[♥❤]️?)?$";
 
    private static final String NAME = "(?:[\\[(][^\\])]{1,16}[\\])]\\s*)?(?<![A-Za-z0-9_])(?<%s>[A-Za-z0-9_]{1,16})(?![A-Za-z0-9_])";
