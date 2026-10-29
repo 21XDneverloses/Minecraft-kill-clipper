@@ -21,7 +21,7 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class ClipConfig {
    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
    public static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("killclipper.json");
-   public static final Set<String> ENCODERS = Set.of("libx264", "h264_nvenc", "h264_amf", "h264_qsv");
+   public static final Set<String> ENCODERS = Set.of("libx264", "h264_nvenc", "hevc_nvenc", "h264_amf", "h264_qsv");
    /** Bumped when a default changes so older config files pick it up. */
    public int configVersion = 0;
    public boolean enabled = true;

@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Comparator;
@@ -35,6 +36,9 @@ public final class ClipRecorder {
    private String lastError = "";
    /** The configured hardware encoder that failed, so recording falls back to the CPU encoder. */
    private String failedEncoder = "";
+   /** Readback buffers reused across frames; allocating an 8 MB GPU buffer every frame causes stutter. */
+   private final ArrayDeque<GpuBuffer> readbacks = new ArrayDeque<>();
+   private long readbackSize;
 
    public ClipRecorder(Path bufferRoot, Path ffmpegCache, Consumer<String> errors) {
       this.bufferRoot = bufferRoot;
@@ -90,6 +94,11 @@ public final class ClipRecorder {
       } else {
          return List.of("-f", "pulse", "-i", device.isEmpty() ? "default" : device);
       }
+   }
+
+   /** Percent of recorded frames that were repeats, or -1 when not recording. */
+   public double repeatedPercent() {
+      return this.buffer == null ? -1.0 : this.buffer.repeatedPercent();
    }
 
    public boolean running() {
@@ -167,7 +176,14 @@ public final class ClipRecorder {
       }
 
       GpuDevice device = RenderSystem.getDevice();
-      GpuBuffer readback = device.createBuffer(() -> "KillClip frame", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, (long)target.frameBytes());
+      long size = target.frameBytes();
+      if (size != this.readbackSize) {
+         this.closeReadbacks();
+         this.readbackSize = size;
+      }
+
+      GpuBuffer pooled = this.readbacks.poll();
+      GpuBuffer readback = pooled != null ? pooled : device.createBuffer(() -> "KillClip frame", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, size);
       CommandEncoder encoder = device.createCommandEncoder();
       encoder.copyTextureToBuffer(texture, readback, 0L, () -> {
          try (GpuBuffer.MappedView view = encoder.mapBuffer(readback, true, false)) {
@@ -176,7 +192,11 @@ public final class ClipRecorder {
          } catch (RuntimeException e) {
             target.skip(due, pixels);
          } finally {
-            readback.close();
+            if (readback.size() == this.readbackSize && this.readbacks.size() < 4) {
+               this.readbacks.push(readback);
+            } else {
+               readback.close();
+            }
          }
       }, 0);
    }
@@ -198,7 +218,14 @@ public final class ClipRecorder {
       }));
    }
 
+   private void closeReadbacks() {
+      this.readbacks.forEach(GpuBuffer::close);
+      this.readbacks.clear();
+   }
+
    public void stop() {
+      this.closeReadbacks();
+      this.readbackSize = 0L;
       ReplayBuffer old = this.buffer;
       this.buffer = null;
       GameAudioTap.setSink(null);

@@ -16,7 +16,7 @@ public final class KillClipSettingsScreen extends Screen {
    private static final List<Integer> FPS = List.of(30, 60, 120);
    private static final List<Integer> RESOLUTIONS = List.of(480, 720, 1080, 1440, 0);
    private static final List<Integer> QUALITIES = List.of(28, 23, 18);
-   private static final List<String> ENCODERS = List.of("libx264", "h264_nvenc", "h264_amf", "h264_qsv");
+   private static final List<String> ENCODERS = List.of("libx264", "h264_nvenc", "hevc_nvenc", "h264_amf", "h264_qsv");
    private static final List<Integer> BUFFERS = List.of(15, 30, 60, 90);
    private static final List<Integer> STREAK_KILLS = List.of(2, 3, 4, 5);
    private static final List<Integer> STREAK_GAPS = List.of(5000, 10000, 15000, 20000);
@@ -89,6 +89,7 @@ public final class KillClipSettingsScreen extends Screen {
    private static String encoderName(String encoder) {
       return switch (encoder) {
          case "h264_nvenc" -> "NVIDIA";
+         case "hevc_nvenc" -> "NVIDIA H.265";
          case "h264_amf" -> "AMD";
          case "h264_qsv" -> "Intel";
          default -> "CPU";

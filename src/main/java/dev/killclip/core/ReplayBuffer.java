@@ -68,6 +68,7 @@ public final class ReplayBuffer implements AutoCloseable {
    private long framesClaimed;
    private long lastClaimMs;
    private volatile long framesWritten;
+   private volatile long framesRepeated;
    private volatile String failure;
    private volatile boolean closed;
 
@@ -123,7 +124,12 @@ public final class ReplayBuffer implements AutoCloseable {
          cmd.addAll(s.audioInput());
       }
 
-      cmd.addAll(List.of("-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1)));
+      // vflip only adjusts line pointers; the RGBA to YUV conversion is the costly step, so run it on several threads.
+      int threads = Math.max(2, Math.min(8, Runtime.getRuntime().availableProcessors() / 2));
+      cmd.addAll(List.of(
+         "-filter_threads", String.valueOf(threads),
+         "-vf", "vflip,scale=" + (outWidth & ~1) + ":" + (outHeight & ~1) + ":flags=fast_bilinear,format=yuv420p"
+      ));
       cmd.addAll(codecArgs(s.encoder(), s.quality()));
       if (s.hasAudio()) {
          cmd.addAll(List.of("-c:a", "aac", "-b:a", "160k", "-ar", "48000"));
@@ -141,6 +147,8 @@ public final class ReplayBuffer implements AutoCloseable {
       String q = String.valueOf(quality);
       return switch (encoder) {
          case "h264_nvenc" -> List.of("-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", q, "-b:v", "0");
+         // H.265 makes much smaller files at the same quality.
+         case "hevc_nvenc" -> List.of("-c:v", "hevc_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", q, "-b:v", "0");
          case "h264_amf" -> List.of("-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", q, "-qp_p", q);
          case "h264_qsv" -> List.of("-c:v", "h264_qsv", "-global_quality", q);
          default -> List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", q);
@@ -192,6 +200,12 @@ public final class ReplayBuffer implements AutoCloseable {
    /** A free pixel buffer for the next frame, or null when the encoder is behind. */
    public byte[] borrow() {
       return this.free.poll();
+   }
+
+   /** Share of written frames that repeat the previous one because capture fell behind (choppiness). */
+   public double repeatedPercent() {
+      long written = this.framesWritten;
+      return written == 0L ? 0.0 : 100.0 * this.framesRepeated / written;
    }
 
    public int frameBytes() {
@@ -300,6 +314,7 @@ public final class ReplayBuffer implements AutoCloseable {
                }
 
                this.framesWritten += frame.copies();
+               this.framesRepeated += frame.copies() - 1;
                this.free.offer(frame.pixels());
             }
 
@@ -384,10 +399,17 @@ public final class ReplayBuffer implements AutoCloseable {
             Path list = this.segmentDir.resolve("concat-" + System.nanoTime() + ".txt");
             Files.write(list, lines);
             try {
-               Process concat = new ProcessBuilder(
-                     this.settings.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                     "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy", "-movflags", "+faststart", output.toString()
-                  )
+               List<String> concatCommand = new ArrayList<>(List.of(
+                  this.settings.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                  "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy", "-movflags", "+faststart"
+               ));
+               if (this.settings.encoder().startsWith("hevc")) {
+                  // hvc1 is the H.265 tag Windows and Apple players expect in mp4.
+                  concatCommand.addAll(List.of("-tag:v", "hvc1"));
+               }
+
+               concatCommand.add(output.toString());
+               Process concat = new ProcessBuilder(concatCommand)
                   .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                   .redirectErrorStream(true)
                   .start();
