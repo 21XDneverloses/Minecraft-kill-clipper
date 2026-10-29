@@ -33,6 +33,8 @@ public final class ClipRecorder {
    private ReplayBuffer buffer;
    private long retryAtMs;
    private String lastError = "";
+   /** The configured hardware encoder that failed, so recording falls back to the CPU encoder. */
+   private String failedEncoder = "";
 
    public ClipRecorder(Path bufferRoot, Path ffmpegCache, Consumer<String> errors) {
       this.bufferRoot = bufferRoot;
@@ -69,7 +71,8 @@ public final class ClipRecorder {
 
    private ReplayBuffer.Settings settingsFrom(ClipConfig config, String ffmpeg) {
       boolean gameAudio = "game".equals(config.audioSource) && GameAudioTap.active();
-      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, config.encoder, config.bufferSeconds, audioInput(config), gameAudio);
+      String encoder = config.encoder.equals(this.failedEncoder) ? "libx264" : config.encoder;
+      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, encoder, config.bufferSeconds, audioInput(config), gameAudio);
    }
 
    /** FFmpeg input arguments for the chosen audio source. Only system audio is supported. */
@@ -117,9 +120,19 @@ public final class ClipRecorder {
       if (this.buffer != null) {
          String failure = this.buffer.failure();
          if (failure != null) {
-            this.report(failure);
-            this.retryAtMs = nowMs + 10000L;
+            String encoder = this.buffer.settings().encoder();
+            if (!"libx264".equals(encoder)) {
+               // The hardware encoder is missing or unsupported on this PC: switch to the CPU encoder right away.
+               this.report("Encoder " + encoder + " failed (" + failure + "); recording with the CPU encoder instead");
+               this.failedEncoder = encoder;
+               this.retryAtMs = nowMs;
+            } else {
+               this.report(failure);
+               this.retryAtMs = nowMs + 10000L;
+            }
+
             this.stop();
+            wanted = this.settingsFrom(config, ffmpeg);
          } else if (this.buffer.width() != width || this.buffer.height() != height || !this.buffer.settings().equals(wanted) || this.buffer.stalled(nowMs)) {
             this.stop();
          }
