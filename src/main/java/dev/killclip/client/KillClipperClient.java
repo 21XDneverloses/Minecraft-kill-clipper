@@ -72,6 +72,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
    private boolean started;
+   private static final double PROJECTILE_RANGE = 128.0;
    private static final List<Pattern> UNIVERSAL_RULES = ServerDefaults.UNIVERSAL.stream().map(rule -> Pattern.compile(rule, Pattern.CASE_INSENSITIVE)).toList();
    private List<Pattern> allServerRules = List.of();
    private long lastSelfDeathMs = Long.MIN_VALUE / 2;
@@ -296,7 +297,8 @@ public final class KillClipperClient implements ClientModInitializer {
          return;
       }
 
-      for (Entity entity : client.world.getEntities()) {
+      // Only projectiles near you can be yours in flight; scanning every loaded entity each tick is wasted work.
+      for (Entity entity : client.world.getOtherEntities(client.player, client.player.getBoundingBox().expand(PROJECTILE_RANGE), e -> e instanceof ProjectileEntity)) {
          if (entity instanceof ProjectileEntity projectile && projectile.getOwner() == client.player) {
             for (PlayerEntity other : client.world.getPlayers()) {
                if (other != client.player && other.getBoundingBox().expand(1.0).intersects(projectile.getBoundingBox())) {

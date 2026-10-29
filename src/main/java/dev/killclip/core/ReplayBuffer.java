@@ -105,6 +105,7 @@ public final class ReplayBuffer implements AutoCloseable {
       builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
       builder.redirectError(segmentDir.resolve("ffmpeg.log").toFile());
       this.ffmpeg = builder.start();
+      ProcessPriority.lower(this.ffmpeg);
       this.ffmpeg.getOutputStream().close();
       for (int i = 0; i < QUEUE_FRAMES + 2; i++) {
          this.free.add(new byte[this.frameBytes]);
