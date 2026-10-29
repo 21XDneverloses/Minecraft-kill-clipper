@@ -71,14 +71,16 @@ import org.lwjgl.glfw.GLFW;
 @Environment(EnvType.CLIENT)
 public final class ReplayPlayer {
    public enum CameraMode {
-      FIRST_PERSON("First person"),
-      THIRD_PERSON("Third person"),
-      SPECTATOR("Spectator (free camera)");
+      FIRST_PERSON("First person", "1st person"),
+      THIRD_PERSON("Third person", "3rd person"),
+      SPECTATOR("Spectator (free camera)", "Spectator");
 
       final String label;
+      final String shortLabel;
 
-      CameraMode(String label) {
+      CameraMode(String label, String shortLabel) {
          this.label = label;
+         this.shortLabel = shortLabel;
       }
    }
 
@@ -105,6 +107,12 @@ public final class ReplayPlayer {
    private boolean closed;
    private boolean hidingHud;
    private boolean hudWasHidden;
+   final ReplayEdit edit;
+   private ReplayEdit.Switch lastSwitch;
+   /** Export: the clip is played from the start with the camera switches while the recorder captures it. */
+   private String exportFormat;
+   private long exportStartRealMs;
+   private net.minecraft.network.message.ChatVisibility chatBeforeExport;
 
    private ReplayPlayer(MinecraftClient client, Path file, List<ReplayLog.Entry> entries, Map<String, String> header) {
       this.client = client;
@@ -112,6 +120,7 @@ public final class ReplayPlayer {
       this.entries = entries;
       this.clipStartMs = parse(header.get("clipStartMs"), 0L);
       this.clipEndMs = parse(header.get("clipEndMs"), entries.isEmpty() ? 0L : entries.getLast().timeMs());
+      this.edit = ReplayEdit.load(file);
       this.connection = new ClientConnection(NetworkSide.CLIENTBOUND);
       ReplayCapture.ignore(this.connection);
       // Everything the client tries to send to the "server" is dropped.
@@ -264,6 +273,11 @@ public final class ReplayPlayer {
       CameraMode keepMode = this.mode;
       boolean keepPaused = this.paused;
       float keepSpeed = this.speed;
+      String keepExport = this.exportFormat;
+      net.minecraft.network.message.ChatVisibility keepChat = this.chatBeforeExport;
+      // The restarted replay takes over the export; this one must not undo it when it closes.
+      this.exportFormat = null;
+      this.chatBeforeExport = null;
       try {
          start(this.client, this.file);
          ReplayPlayer restarted = active;
@@ -271,8 +285,13 @@ public final class ReplayPlayer {
          restarted.mode = keepMode;
          restarted.paused = keepPaused;
          restarted.speed = keepSpeed;
+         restarted.exportFormat = keepExport;
+         restarted.chatBeforeExport = keepChat;
       } catch (IOException e) {
          KillClipperClient.LOGGER.warn("Could not restart the replay", e);
+         if (keepChat != null) {
+            this.client.options.getChatVisibility().setValue(keepChat);
+         }
       }
    }
 
@@ -280,6 +299,102 @@ public final class ReplayPlayer {
       this.mode = mode;
       this.applyCamera();
       this.client.inGameHud.setOverlayMessage(Text.literal("Camera: " + mode.label), false);
+   }
+
+   public boolean exporting() {
+      return this.exportFormat != null;
+   }
+
+   /** Adds a camera switch at the current time with the current camera (and the free camera's spot). */
+   void addSwitchHere() {
+      MarkerEntity camera = this.freeCamera;
+      ClientPlayerEntity player = this.client.player;
+      double x = camera != null ? camera.getX() : player != null ? player.getX() : 0.0;
+      double y = camera != null ? camera.getY() : player != null ? player.getEyeY() : 0.0;
+      double z = camera != null ? camera.getZ() : player != null ? player.getZ() : 0.0;
+      float yaw = camera != null ? camera.getYaw() : player != null ? player.getYaw() : 0.0F;
+      float pitch = camera != null ? camera.getPitch() : player != null ? player.getPitch() : 0.0F;
+      ReplayEdit.Switch added = new ReplayEdit.Switch(this.clipTimeMs(), this.mode, x, y, z, yaw, pitch);
+      this.edit.put(added);
+      this.lastSwitch = added;
+   }
+
+   /** Plays the clip from the start with the camera switches and saves it as a new video. */
+   void export(String format) {
+      if (this.exportFormat != null) {
+         return;
+      }
+
+      this.exportFormat = format;
+      this.exportStartRealMs = 0L;
+      this.chatBeforeExport = this.client.options.getChatVisibility().getValue();
+      this.client.options.getChatVisibility().setValue(net.minecraft.network.message.ChatVisibility.HIDDEN);
+      this.client.setScreen(null);
+      this.paused = false;
+      this.speed = 1.0F;
+      ReplayPlayer before = active;
+      this.seekClip(0L);
+      if (active == before) {
+         this.lastSwitch = null;
+      }
+   }
+
+   private void finishExport(boolean saved) {
+      String format = this.exportFormat;
+      long start = this.exportStartRealMs;
+      this.exportFormat = null;
+      if (this.chatBeforeExport != null) {
+         this.client.options.getChatVisibility().setValue(this.chatBeforeExport);
+         this.chatBeforeExport = null;
+      }
+
+      if (saved && format != null && start > 0L) {
+         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L, this.file, format);
+      }
+   }
+
+   /** Follows the camera switches while playing; a paused replay leaves the camera to you. */
+   private void followSwitches() {
+      if (this.edit.switches.isEmpty() || this.paused && !this.exporting()) {
+         return;
+      }
+
+      ReplayEdit.Switch current = this.edit.at(this.clipTimeMs());
+      if (current == null) {
+         return;
+      }
+
+      if (current != this.lastSwitch) {
+         this.lastSwitch = current;
+         this.mode = current.mode;
+         this.applyCamera();
+      }
+
+      if (current.mode == CameraMode.SPECTATOR && this.freeCamera != null) {
+         ReplayEdit.Switch next = this.edit.after(current);
+         double x = current.x;
+         double y = current.y;
+         double z = current.z;
+         float yaw = current.yaw;
+         float pitch = current.pitch;
+         if (next != null && next.mode == CameraMode.SPECTATOR && next.timeMs > current.timeMs) {
+            float t = MathHelper.clamp((float)(this.clipTimeMs() - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
+            float smooth = t * t * (3.0F - 2.0F * t);
+            x = MathHelper.lerp(smooth, current.x, next.x);
+            y = MathHelper.lerp(smooth, current.y, next.y);
+            z = MathHelper.lerp(smooth, current.z, next.z);
+            yaw = MathHelper.lerpAngleDegrees(smooth, current.yaw, next.yaw);
+            pitch = MathHelper.lerp(smooth, current.pitch, next.pitch);
+         }
+
+         boolean jump = current == this.lastSwitch && this.freeCamera.squaredDistanceTo(x, y, z) > 400.0;
+         this.freeCamera.setPosition(x, y, z);
+         this.freeCamera.setYaw(yaw);
+         this.freeCamera.setPitch(pitch);
+         if (jump) {
+            this.freeCamera.resetPosition();
+         }
+      }
    }
 
    /** Called once per client tick. */
@@ -325,11 +440,21 @@ public final class ReplayPlayer {
          player.setNoGravity(true);
          this.applyCamera();
          this.moveFreeCamera();
+         this.followSwitches();
+      }
+
+      if (this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.client.currentScreen == null
+         && this.timeMs >= this.clipStartMs && this.seekTargetMs < 0L) {
+         this.exportStartRealMs = System.nanoTime() / 1000000L;
       }
 
       if (this.timeMs >= this.clipEndMs && !this.paused) {
          this.setPaused(true);
-         this.client.inGameHud.setOverlayMessage(Text.literal("End of clip"), false);
+         if (this.exporting()) {
+            this.finishExport(true);
+         } else {
+            this.client.inGameHud.setOverlayMessage(Text.literal("End of clip. Press E to edit."), false);
+         }
       }
    }
 
@@ -513,7 +638,8 @@ public final class ReplayPlayer {
    /** Spectator camera: WASD to move, Space up, Shift down, Ctrl faster. Mouse looks around. */
    private void moveFreeCamera() {
       MarkerEntity camera = this.freeCamera;
-      if (this.mode != CameraMode.SPECTATOR || camera == null || this.client.currentScreen != null) {
+      boolean switchesDrive = !this.edit.switches.isEmpty() && (!this.paused || this.exporting());
+      if (this.mode != CameraMode.SPECTATOR || camera == null || this.client.currentScreen != null || switchesDrive) {
          if (camera != null) {
             camera.resetPosition();
          }
@@ -547,7 +673,12 @@ public final class ReplayPlayer {
 
    /** V camera, P pause, arrows seek and change speed. */
    private void handleKeys() {
-      if (this.client.currentScreen != null) {
+      if (this.client.currentScreen != null || this.exporting()) {
+         return;
+      }
+
+      if (pressed(GLFW.GLFW_KEY_E)) {
+         this.client.setScreen(new ReplayEditorScreen(this));
          return;
       }
 
@@ -593,7 +724,7 @@ public final class ReplayPlayer {
 
       this.closed = true;
       if (this.client.world != null && this.client.getNetworkHandler() != null && this.client.getNetworkHandler().getConnection() == this.connection) {
-         this.client.disconnect(new net.minecraft.client.gui.screen.TitleScreen(), false);
+         this.client.disconnect(new ClipLibraryScreen(new net.minecraft.client.gui.screen.TitleScreen()), false);
       }
 
       this.restoreView();
@@ -601,6 +732,12 @@ public final class ReplayPlayer {
    }
 
    private void restoreView() {
+      if (this.chatBeforeExport != null) {
+         this.client.options.getChatVisibility().setValue(this.chatBeforeExport);
+         this.chatBeforeExport = null;
+         this.exportFormat = null;
+      }
+
       this.client.options.setPerspective(Perspective.FIRST_PERSON);
       if (this.hidingHud) {
          this.client.options.hudHidden = this.hudWasHidden;

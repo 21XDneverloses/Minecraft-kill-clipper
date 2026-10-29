@@ -89,7 +89,7 @@ public final class ClipRecorder {
    }
 
    /** The FFmpeg to run, or null while the bundled one is still unpacking. */
-   private String ffmpegPath(ClipConfig config) {
+   String ffmpegPath(ClipConfig config) {
       if (!config.ffmpegPath.isBlank()) {
          return config.ffmpegPath;
       }

@@ -92,6 +92,13 @@ public final class KillClipperClient implements ClientModInitializer {
       INSTANCE = this;
       Path clipDir = FabricLoader.getInstance().getGameDir().resolve("killclips");
       ReplayCapture.init(clipDir.resolve(".replay"));
+      net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
+         if (screen instanceof net.minecraft.client.gui.screen.TitleScreen) {
+            net.fabricmc.fabric.api.client.screen.v1.Screens.getButtons(screen).add(
+               net.minecraft.client.gui.widget.ButtonWidget.builder(Text.literal("Clip Editor"), b -> client.setScreen(new ClipLibraryScreen(screen)))
+                  .dimensions(4, 4, 80, 20).build());
+         }
+      });
       this.recorder = new ClipRecorder(clipDir.resolve(".buffer"), clipDir.resolve(".ffmpeg"), message -> {
          LOGGER.warn("Recorder: {}", message);
          MinecraftClient.getInstance().execute(() -> tell("Recorder: " + message));
@@ -163,6 +170,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          this.runDevReplay(client);
+         DevEditorCheck.tick(client);
          if (client.player != null && client.player.isDead()) {
             this.lastSelfDeathMs = nowMs();
          }
@@ -569,6 +577,26 @@ public final class KillClipperClient implements ClientModInitializer {
             LOGGER.warn("Fight replay not saved: {}", error.getMessage());
          }
       });
+   }
+
+   /** The FFmpeg the recorder uses, or null while it is still being unpacked. */
+   public String ffmpeg() {
+      return this.recorder.ffmpegPath(this.config);
+   }
+
+   /** Saves an exported replay edit: the recorder captured it while it played. */
+   void exportEdit(long fromMs, long toMs, Path replay, String format) {
+      long length = toMs - fromMs;
+      if (length > this.config.bufferSeconds * 1000L) {
+         notify("✗ Export is " + length / 1000L + " s but the buffer only keeps " + this.config.bufferSeconds + " s. Raise Buffer in the settings.", Formatting.RED);
+         return;
+      }
+
+      String name = replay.getFileName().toString().replace(".kcreplay", "");
+      notify("● Saving edited clip...", Formatting.AQUA);
+      this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
+         file -> notify("✓ Edited clip saved: " + file, Formatting.GREEN),
+         error -> notify("✗ Export failed: " + error, Formatting.RED));
    }
 
    /** Saves the last 10 seconds right now. */
