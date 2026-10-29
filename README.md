@@ -37,6 +37,7 @@ The jar is written to `build/libs/`. Needs Java 21.
 
 The files in `tests/` are standalone and run with `javac` and `java`:
 
+- `DeathMessagesTest`: kill-message rules for many servers, and lines where you died that must never count.
 - `StreakTrackerTest`, `HitTrackerTest`: streak grouping, hit tracking, and unpacking the bundled FFmpeg.
 - `HighlightReelTest`: rating and picking clips, beat detection, cutting on the beat, popups, and making reels with every transition, with and without music, replays and 9:16. Needs `ffmpeg` on PATH. Compile it with `src/main/java/dev/killclip/core/HighlightReel.java`, `ReelMusic.java`, `ReelText.java`, `BeatDetector.java`, `ClipMeta.java`, `VideoTools.java` and `ProcessPriority.java` (the last needs JNA on the classpath, or a stub).
 - `ReplayBufferTest`, `GameAudioTest`: record synthetic frames and audio through FFmpeg and save clips. Both need `ffmpeg` on PATH.
