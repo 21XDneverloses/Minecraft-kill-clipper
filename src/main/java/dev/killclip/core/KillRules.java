@@ -70,7 +70,7 @@ public final class KillRules {
    private static final Pattern KILL_WORD = Pattern.compile(
       "(?i)\\b(?:killed|kills|slain|slew|slayed|eliminated|defeated|destroyed|murdered|finished|obliterated|annihilated|blown|blew"
          + "|exploded|crystall?ed|popped|anchored|bombed|nuked|shot|sniped|knocked|pushed|doomed|died|fell|perished|lost|beat|won"
-         + "|rekt|wrecked|clapped|deleted|bested|one-?tapped|pwned|owned|taken\\s+out|took\\s+out|sent\\s+to|wiped|smoked|ended|outplayed|fragged)\\b"
+         + "|rekt|wrecked|clapped|deleted|bested|one-?tapped|pwned|owned|taken\\s+out|took\\s+out|sent\\s+to|wiped|smoked|outplayed|fragged|demolished|crushed|dominated|humiliated|eviscerated|executed|slaughtered|smashed|stomped|bodied|dismantled|erased|vaporized|terminated|neutralized|dispatched|shattered|butchered|bonked|melted|cooked|fried|farmed|disintegrated|decimated|massacred|squashed|pummeled|pummelled|zapped|sliced|stabbed|impaled|beheaded|knocked\\s+out)\\b"
    );
    /** Words right after a name that mean that player is the one who died or lost. */
    private static final Pattern LOSER_VERB = Pattern.compile("(?i)^\\W*(?:was|were|got|has\\s+been|have\\s+been|is|died|fell|perished|lost|tried|hit|drowned|burned|burnt|went|suffocated|starved|froze|withered)\\b");
@@ -91,6 +91,7 @@ public final class KillRules {
       }
 
       int localAt = -1;
+      int localLength = 0;
       int otherAt = -1;
       String other = null;
       Matcher names = NAME_TOKEN.matcher(plain);
@@ -102,9 +103,11 @@ public final class KillRules {
          }
 
          String token = names.group();
-         if (token.equals(local)) {
+         if (token.equals(local) || token.equalsIgnoreCase("you")) {
+            // Custom messages often say "You" instead of your name.
             if (localAt < 0) {
                localAt = names.start();
+               localLength = token.length();
             }
          } else if (online.contains(token)) {
             if (other != null && !other.equals(token)) {
@@ -130,7 +133,7 @@ public final class KillRules {
 
       boolean localByPreposition = localAt > otherAt && KILLER_PREFIX.matcher(beforeLocal).find();
       boolean localActiveFirst = localAt < otherAt
-         && !LOSER_VERB.matcher(plain.substring(localAt + local.length())).find()
+         && !LOSER_VERB.matcher(plain.substring(localAt + localLength)).find()
          && KILL_WORD.matcher(plain.substring(localAt, otherAt)).find();
       boolean otherIsLoser = localAt > otherAt && LOSER_VERB.matcher(plain.substring(otherAt + other.length())).find();
       return localByPreposition || localActiveFirst || otherIsLoser && KILLER_PREFIX.matcher(beforeLocal).find()

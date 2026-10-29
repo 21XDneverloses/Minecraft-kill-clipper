@@ -31,14 +31,14 @@ public final class DeathMessagesTest {
       }
       for (String line : new String[] {
          "Me killed Bob", "Bob got rekt by Me", "Me destroyed Bob in 12s", "[Arena] Bob was taken out by Me!", "Bob fell to their death fighting Me",
-         "☠ Me popped Bob", "Me has won the fight vs Bob", "Bob was sent to the shadow realm by [VIP] Me"
+         "☠ Me popped Bob", "Me has won the fight vs Bob", "Bob was sent to the shadow realm by [VIP] Me", "You obliterated Bob!", "You destroyed Bob (+25 coins)", "Bob was demolished by you", "⚔ You eviscerated Bob"
       }) {
          check(KillRules.guess(line, "Me", online).isPresent(), "guess counts: " + line);
       }
       for (String line : new String[] {
          "Bob killed Me", "Me was killed by Bob", "Me died to Bob", "Me lost to Bob", "Me fell while fighting Bob", "Bob: Me killed Bob",
          "<Bob> lol Me killed Bob", "Me killed a Zombie", "Me sent Bob a duel request", "Me killed Bob and Carl", "Bob was slain by Locked_Gears near Me",
-         "Me got popped by Bob"
+         "Me got popped by Bob", "Bob destroyed you", "You were obliterated by Bob", "You lost to Bob", "Bob killed you"
       }) {
          check(KillRules.guess(line, "Me", online.contains("Carl") ? online : Set.of("Me", "Bob", "Carl", "Locked_Gears")).isEmpty(), "guess ignores: " + line);
       }
