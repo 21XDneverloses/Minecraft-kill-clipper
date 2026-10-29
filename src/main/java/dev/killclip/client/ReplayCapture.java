@@ -64,7 +64,12 @@ public final class ReplayCapture {
 
    /** Called when a connection starts decoding a new phase. */
    public static void onTransition(ClientConnection conn, NetworkState<?> next) {
-      if (conn.getSide() != NetworkSide.CLIENTBOUND || conn == ignored || sessionDir == null) {
+      if (conn == ignored) {
+         ReplayPlayer.onTransition(conn, next);
+         return;
+      }
+
+      if (conn.getSide() != NetworkSide.CLIENTBOUND || sessionDir == null) {
          return;
       }
 

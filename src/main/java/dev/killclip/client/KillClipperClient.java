@@ -113,12 +113,17 @@ public final class KillClipperClient implements ClientModInitializer {
       ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
          this.reset();
          this.refreshVanillaPatterns();
-         tell("Loaded. " + this.recordingSummary() + ". Use /killclip status, /killclip test or /killclip menu.");
+         if (ReplayPlayer.playing()) {
+            tell("Replay: V camera (first person, third person, spectator), P pause, ←/→ 5 s, ↑/↓ speed. Esc → Disconnect to leave.");
+         } else {
+            tell("Loaded. " + this.recordingSummary() + ". Use /killclip status, /killclip test or /killclip menu.");
+         }
       });
       ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
          this.finishCapture();
          this.reset();
          ReplayCapture.stop();
+         ReplayPlayer.onDisconnected(handler.getConnection());
       });
       ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
          this.finishCapture();
@@ -153,6 +158,11 @@ public final class KillClipperClient implements ClientModInitializer {
 
          this.trackProjectileHits(client);
          ReplayCapture.recordSelf(client);
+         if (ReplayPlayer.active() != null) {
+            ReplayPlayer.active().tick();
+         }
+
+         this.runDevReplay(client);
          if (client.player != null && client.player.isDead()) {
             this.lastSelfDeathMs = nowMs();
          }
@@ -217,6 +227,10 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    private void onServerMessage(Text message) {
+      if (ReplayPlayer.playing()) {
+         return;
+      }
+
       MinecraftClient client = MinecraftClient.getInstance();
       if (this.captureUntil != 0L && this.captured.size() < 100) {
          String text = message.getString();
@@ -272,7 +286,7 @@ public final class KillClipperClient implements ClientModInitializer {
     * the match ended in your favour, so that player counts as killed even if their death was never shown.
     */
    private void onWorldLeave() {
-      if (!this.config.enabled) {
+      if (!this.config.enabled || ReplayPlayer.playing()) {
          return;
       }
 
@@ -470,6 +484,43 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
+   private long devReplayStartMs;
+   private int devReplayStep;
+
+   /** Dev check: -Dkillclip.devReplay=file plays a replay and screenshots each camera mode. */
+   private void runDevReplay(MinecraftClient client) {
+      String file = System.getProperty("killclip.devReplay", "");
+      if (file.isEmpty()) {
+         return;
+      }
+
+      if (this.devReplayStep == 0 && client.currentScreen instanceof net.minecraft.client.gui.screen.TitleScreen) {
+         this.devReplayStep = 1;
+         try {
+            ReplayPlayer.start(client, Path.of(file));
+            LOGGER.info("KILLCLIP_DEVREPLAY started");
+         } catch (Exception e) {
+            LOGGER.error("KILLCLIP_DEVREPLAY failed to start", e);
+         }
+      } else if (this.devReplayStep == 1 && client.world != null && client.currentScreen == null) {
+         this.devReplayStep = 2;
+         this.devReplayStartMs = nowMs();
+      } else if (this.devReplayStep >= 2 && this.devReplayStep <= 7 && ReplayPlayer.active() != null) {
+         long since = nowMs() - this.devReplayStartMs;
+         if (since >= (this.devReplayStep - 1) * 2000L) {
+            ReplayPlayer.CameraMode mode = ReplayPlayer.CameraMode.values()[(this.devReplayStep - 2) / 2];
+            if (this.devReplayStep % 2 == 0) {
+               ReplayPlayer.active().setMode(mode);
+            } else {
+               net.minecraft.client.util.ScreenshotRecorder.saveScreenshot(client.runDirectory, "replay-" + mode.name().toLowerCase() + ".png", client.getFramebuffer(), 1,
+                  text -> LOGGER.info("KILLCLIP_DEVREPLAY {}: {}", mode, text.getString()));
+            }
+
+            this.devReplayStep++;
+         }
+      }
+   }
+
    /** Dev check: -Dkillclip.selfTestClipSeconds=N saves a test clip N seconds after launch, without a world. */
    private void runSelfTest() {
       String devServer = System.getProperty("killclip.devConnect", "");
@@ -590,7 +641,8 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    private boolean allowed() {
-      return !this.config.restrictToListedServers || KillRules.hostAllowed(this.host(), this.config.servers);
+      // Never clip kills while watching a replay.
+      return !ReplayPlayer.playing() && (!this.config.restrictToListedServers || KillRules.hostAllowed(this.host(), this.config.servers));
    }
 
    private String host() {
