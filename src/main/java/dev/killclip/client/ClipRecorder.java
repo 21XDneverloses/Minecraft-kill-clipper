@@ -100,7 +100,7 @@ public final class ClipRecorder {
    private ReplayBuffer.Settings settingsFrom(ClipConfig config, String ffmpeg) {
       boolean gameAudio = "game".equals(config.audioSource) && GameAudioTap.active();
       String encoder = config.encoder.equals(this.failedEncoder) ? "libx264" : config.encoder;
-      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, encoder, config.bufferSeconds, audioInput(config), gameAudio);
+      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, encoder, config.effectiveBufferSeconds(), audioInput(config), gameAudio);
    }
 
    /** FFmpeg input arguments for the chosen audio source. Only system audio is supported. */

@@ -73,6 +73,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private long nextPlayerRefresh;
    private boolean started;
    private static final double PROJECTILE_RANGE = 128.0;
+   private static final long MAX_CLIP_MS = 120000L;
    private static final List<Pattern> UNIVERSAL_RULES = ServerDefaults.UNIVERSAL.stream().map(rule -> Pattern.compile(rule, Pattern.CASE_INSENSITIVE)).toList();
    private List<Pattern> allServerRules = List.of();
    private long lastSelfDeathMs = Long.MIN_VALUE / 2;
@@ -416,7 +417,10 @@ public final class KillClipperClient implements ClientModInitializer {
       boolean isStreak = streak.kills() >= this.config.streakMinKills;
       String label = isStreak ? streak.kills() + "-kill-streak" : "kill";
       String title = isStreak ? streak.kills() + "-kill streak" : "Kill";
-      this.saveClip(streak.firstKillMs() - this.config.preRollMs, streak.lastKillMs() + this.config.postRollMs, label, title, false);
+      long to = streak.lastKillMs() + this.config.postRollMs;
+      // Clips are at most 2 minutes; a longer streak keeps its end.
+      long from = Math.max(streak.firstKillMs() - this.config.preRollMs, to - MAX_CLIP_MS);
+      this.saveClip(from, to, label, title, false);
    }
 
    private void saveClip(long fromMs, long toMs, String label, String title, boolean manual) {
@@ -587,8 +591,8 @@ public final class KillClipperClient implements ClientModInitializer {
    /** Saves an exported replay edit: the recorder captured it while it played. */
    void exportEdit(long fromMs, long toMs, Path replay, String format) {
       long length = toMs - fromMs;
-      if (length > this.config.bufferSeconds * 1000L) {
-         notify("✗ Export is " + length / 1000L + " s but the buffer only keeps " + this.config.bufferSeconds + " s. Raise Buffer in the settings.", Formatting.RED);
+      if (length > this.config.effectiveBufferSeconds() * 1000L) {
+         notify("✗ Export is " + length / 1000L + " s but the buffer only keeps " + this.config.effectiveBufferSeconds() + " s. Raise Buffer in the settings.", Formatting.RED);
          return;
       }
 
@@ -622,7 +626,7 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       String res = this.config.resolution == 0 ? "native" : this.config.resolution + "p";
-      return "Recording " + res + " " + this.config.fps + " fps, last " + this.config.bufferSeconds + " s buffered";
+      return "Recording " + res + " " + this.config.fps + " fps, last " + this.config.effectiveBufferSeconds() + " s buffered" + (this.config.bufferSeconds == 0 ? " (auto)" : "");
    }
 
    private static void notify(String message, Formatting color) {

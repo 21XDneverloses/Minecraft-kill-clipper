@@ -43,7 +43,8 @@ public final class ClipConfig {
    public String encoder = "libx264";
    /** Video file type for saved clips. */
    public String fileFormat = "mp4";
-   public int bufferSeconds = 30;
+   /** Seconds of video kept ready to clip; 0 picks it from the clip settings. */
+   public int bufferSeconds = 0;
    public String audioSource = "game";
    public String audioDevice = "";
    public int preRollMs = 5000;
@@ -57,7 +58,7 @@ public final class ClipConfig {
    public static ClipConfig load() throws IOException {
       if (!Files.exists(PATH)) {
          ClipConfig config = new ClipConfig();
-         config.configVersion = 2;
+         config.configVersion = 3;
          config.save();
          return config;
       } else {
@@ -72,6 +73,13 @@ public final class ClipConfig {
                // 1.1.4: longer hit window so lava and fall deaths after a hit still count.
                config.hitWindowMs = Math.max(config.hitWindowMs, 10000);
                config.configVersion = 2;
+               config.save();
+            }
+
+            if (config.configVersion < 3) {
+               // 1.5.0: the buffer sizes itself to the clip settings.
+               config.bufferSeconds = 0;
+               config.configVersion = 3;
                config.save();
             }
 
@@ -96,9 +104,9 @@ public final class ClipConfig {
       require(this.quality >= 0 && this.quality <= 51, "quality must be 0..51 (lower is better)");
       require(this.encoder != null && ENCODERS.contains(this.encoder), "encoder must be one of " + ENCODERS);
       require(this.fileFormat != null && FORMATS.contains(this.fileFormat), "fileFormat must be one of " + FORMATS);
-      require(this.bufferSeconds >= 10 && this.bufferSeconds <= 120, "bufferSeconds must be 10..120");
+      require(this.bufferSeconds == 0 || this.bufferSeconds >= 10 && this.bufferSeconds <= 300, "bufferSeconds must be 0 (auto) or 10..300");
       require(Set.of("off", "game", "system").contains(this.audioSource), "audioSource must be off, game or system");
-      require(this.preRollMs >= 0 && this.preRollMs <= 30000, "preRollMs must be 0..30000");
+      require(this.preRollMs >= 0 && this.preRollMs <= 120000, "preRollMs must be 0..120000");
       require(this.postRollMs >= 0 && this.postRollMs <= this.streakGapMs, "postRollMs must be 0..streakGapMs");
       require(this.clipsFolder != null, "clipsFolder must be a path or empty for the default");
       require(this.ffmpegPath != null, "ffmpegPath must be a path, or empty for the built-in FFmpeg");
@@ -137,6 +145,22 @@ public final class ClipConfig {
       } finally {
          Files.deleteIfExists(temp);
       }
+   }
+
+   /** Longest streak the automatic buffer leaves room for, after the first kill. */
+   static final int AUTO_STREAK_SECONDS = 60;
+
+   /**
+    * The buffer actually used. Auto keeps enough for the longest clip the settings can make: the time before
+    * the kill, a streak of up to a minute, and the time after, so a 2-minute clip is always possible.
+    */
+   public int effectiveBufferSeconds() {
+      if (this.bufferSeconds > 0) {
+         return this.bufferSeconds;
+      }
+
+      int seconds = (this.preRollMs + this.postRollMs + 999) / 1000 + AUTO_STREAK_SECONDS + 5;
+      return Math.max(30, Math.min(300, seconds));
    }
 
    public ClipConfig copy() {

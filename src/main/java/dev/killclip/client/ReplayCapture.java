@@ -74,7 +74,10 @@ public final class ReplayCapture {
       }
 
       synchronized (LOCK) {
-         if (conn != connection) {
+         // A server switch behind a proxy re-runs configuration and rebuilds the whole world, so older packets
+         // are never needed again: start a fresh log to keep each clip's replay small and quick to save.
+         boolean rebuilt = conn == connection && next.id() == NetworkPhase.CONFIGURATION && state != null && state.id() == NetworkPhase.PLAY;
+         if (conn != connection || rebuilt) {
             if (!enabled || next.id() != NetworkPhase.CONFIGURATION) {
                return;
             }

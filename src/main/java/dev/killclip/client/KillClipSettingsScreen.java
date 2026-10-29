@@ -18,10 +18,10 @@ public final class KillClipSettingsScreen extends Screen {
    private static final List<Integer> QUALITIES = List.of(28, 23, 18);
    private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
    private static final List<String> ENCODERS = List.of("libx264", "h264_nvenc", "hevc_nvenc", "h264_amf", "h264_qsv");
-   private static final List<Integer> BUFFERS = List.of(15, 30, 60, 90);
+   private static final List<Integer> BUFFERS = List.of(0, 30, 60, 120, 180, 300);
    private static final List<Integer> STREAK_KILLS = List.of(2, 3, 4, 5);
    private static final List<Integer> STREAK_GAPS = List.of(5000, 10000, 15000, 20000);
-   private static final List<Integer> PRE_ROLLS = List.of(3000, 5000, 8000, 10000, 15000, 20000, 30000);
+   private static final List<Integer> PRE_ROLLS = List.of(3000, 5000, 8000, 10000, 15000, 20000, 30000, 45000, 60000, 90000, 120000);
    private final Screen parent;
    private ClipConfig draft;
    private String error = "";
@@ -45,7 +45,7 @@ public final class KillClipSettingsScreen extends Screen {
       this.button(x + 152, y + 72, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
       this.button(x + 152, y + 144, 148, () -> "File type: " + this.draft.fileFormat.toUpperCase(java.util.Locale.ROOT), c -> c.fileFormat = next(FORMATS, c.fileFormat));
       this.button(x, y + 144, 148, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
-      this.button(x, y + 96, 148, () -> "Buffer: " + this.draft.bufferSeconds + " s", c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
+      this.button(x, y + 96, 148, () -> "Buffer: " + (this.draft.bufferSeconds == 0 ? "Auto (" + this.draft.effectiveBufferSeconds() + " s)" : this.draft.bufferSeconds + " s"), c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
       this.button(x + 152, y + 96, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
       this.button(x, y + 120, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
       this.button(x + 152, y + 120, 148, () -> "Streak window: " + this.draft.streakGapMs / 1000 + " s", c -> {
