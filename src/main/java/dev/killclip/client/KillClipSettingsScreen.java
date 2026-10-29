@@ -20,7 +20,7 @@ public final class KillClipSettingsScreen extends Screen {
    private static final List<Integer> BUFFERS = List.of(15, 30, 60, 90);
    private static final List<Integer> STREAK_KILLS = List.of(2, 3, 4, 5);
    private static final List<Integer> STREAK_GAPS = List.of(5000, 10000, 15000, 20000);
-   private static final List<Integer> PRE_ROLLS = List.of(3000, 5000, 8000, 10000);
+   private static final List<Integer> PRE_ROLLS = List.of(3000, 5000, 8000, 10000, 15000, 20000, 30000);
    private final Screen parent;
    private ClipConfig draft;
    private String error = "";

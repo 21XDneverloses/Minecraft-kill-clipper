@@ -92,7 +92,7 @@ public final class ClipConfig {
       require(this.encoder != null && ENCODERS.contains(this.encoder), "encoder must be one of " + ENCODERS);
       require(this.bufferSeconds >= 10 && this.bufferSeconds <= 120, "bufferSeconds must be 10..120");
       require(Set.of("off", "game", "system").contains(this.audioSource), "audioSource must be off, game or system");
-      require(this.preRollMs >= 0 && this.preRollMs <= 20000, "preRollMs must be 0..20000");
+      require(this.preRollMs >= 0 && this.preRollMs <= 30000, "preRollMs must be 0..30000");
       require(this.postRollMs >= 0 && this.postRollMs <= this.streakGapMs, "postRollMs must be 0..streakGapMs");
       require(this.clipsFolder != null, "clipsFolder must be a path or empty for the default");
       require(this.ffmpegPath != null, "ffmpegPath must be a path, or empty for the built-in FFmpeg");

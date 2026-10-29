@@ -131,12 +131,12 @@ public final class KillRules {
          return Optional.empty();
       }
 
-      boolean localByPreposition = localAt > otherAt && KILLER_PREFIX.matcher(beforeLocal).find();
       boolean localActiveFirst = localAt < otherAt
          && !LOSER_VERB.matcher(plain.substring(localAt + localLength)).find()
          && KILL_WORD.matcher(plain.substring(localAt, otherAt)).find();
       boolean otherIsLoser = localAt > otherAt && LOSER_VERB.matcher(plain.substring(otherAt + other.length())).find();
-      return localByPreposition || localActiveFirst || otherIsLoser && KILLER_PREFIX.matcher(beforeLocal).find()
+      // "Bob lost to You" and "Bob was killed by You" count; "Bob won against You" (you lost) does not.
+      return localActiveFirst || otherIsLoser && KILLER_PREFIX.matcher(beforeLocal).find()
          ? validate(local, other, local, online)
          : Optional.empty();
    }
