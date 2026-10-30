@@ -118,12 +118,19 @@ public final class VideoTools {
       // Leave 8% for the container; never go below a watchable rate.
       long videoBits = Math.max(300_000L, (long)(maxBytes * 8 * 0.92 / seconds) - audioBits);
       String height = videoBits < 1_500_000L ? "720" : "1080";
+      // A 2-minute clip gets about 0.6 Mbps; spread over 120 frames a second that is a blur, so lower the frame rate.
+      String fps = videoBits < 1_000_000L ? "30" : videoBits < 3_000_000L ? "60" : null;
       for (long bits = videoBits; bits >= 200_000L; bits = bits * 3 / 4) {
          Files.deleteIfExists(output);
-         List<String> cmd = List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", input.toString(),
-            "-vf", "scale=-2:'min(" + height + ",ih)'", "-c:v", "libx264", "-preset", "veryfast", "-b:v", String.valueOf(bits),
+         List<String> cmd = new ArrayList<>(List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", input.toString(),
+            "-vf", "scale=-2:'min(" + height + ",ih)'"));
+         if (fps != null) {
+            cmd.addAll(List.of("-r", fps));
+         }
+
+         cmd.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-b:v", String.valueOf(bits),
             "-maxrate", String.valueOf(bits * 3 / 2), "-bufsize", String.valueOf(bits * 2), "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", output.toString());
+            "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", output.toString()));
          if (run(cmd, 600L) && Files.isRegularFile(output) && Files.size(output) <= maxBytes) {
             return output;
          }
@@ -134,6 +141,8 @@ public final class VideoTools {
 
    private static boolean run(List<String> command, long timeoutSeconds) throws IOException, InterruptedException {
       Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+      // Trims, 9:16 copies and Discord shrinks run on the CPU, often while you play: keep them behind the game.
+      ProcessPriority.lower(process);
       if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
          process.destroyForcibly();
          return false;

@@ -3,13 +3,17 @@ package dev.killclip.client;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.loader.api.FabricLoader;
@@ -19,6 +23,12 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class KillStats {
    private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("killclipper-stats.json");
    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+   /** One thread, so saves land in order. */
+   private static final ExecutorService SAVER = Executors.newSingleThreadExecutor(r -> {
+      Thread thread = new Thread(r, "KillClip stats");
+      thread.setDaemon(true);
+      return thread;
+   });
 
    /** Counts for one server (or for everything). */
    public static final class Line {
@@ -84,13 +94,23 @@ public final class KillStats {
       return stats;
    }
 
+   /** Writes in the background (never on the game thread) through a temp file, so a crash can't half-write it. */
    private void save() {
-      try {
-         Files.createDirectories(PATH.getParent());
-         Files.writeString(PATH, GSON.toJson(this.data));
-      } catch (IOException e) {
-         KillClipperClient.LOGGER.warn("Could not save stats {}", PATH, e);
-      }
+      String json = GSON.toJson(this.data);
+      SAVER.execute(() -> {
+         try {
+            Files.createDirectories(PATH.getParent());
+            Path temp = PATH.resolveSibling(PATH.getFileName() + ".tmp");
+            Files.writeString(temp, json);
+            try {
+               Files.move(temp, PATH, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+               Files.move(temp, PATH, StandardCopyOption.REPLACE_EXISTING);
+            }
+         } catch (IOException e) {
+            KillClipperClient.LOGGER.warn("Could not save stats {}", PATH, e);
+         }
+      });
    }
 
    private Line server(String host) {

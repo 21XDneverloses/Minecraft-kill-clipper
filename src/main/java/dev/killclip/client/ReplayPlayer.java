@@ -328,6 +328,28 @@ public final class ReplayPlayer {
       return this.exportFormat != null;
    }
 
+   /** How long the trimmed part takes to play with the speed of each camera part, in real ms. */
+   long exportPlayMs() {
+      long[] trim = this.trim();
+      double total = 0.0;
+      for (long t = trim[0]; t < trim[1]; t += 50L) {
+         ReplayEdit.Switch current = this.edit.at(t);
+         float speed = 1.0F;
+         if (current != null) {
+            speed = current.speed();
+            ReplayEdit.Switch next = this.edit.after(current);
+            if (next != null && next.timeMs > current.timeMs) {
+               float f = MathHelper.clamp((float)(t - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
+               speed = MathHelper.lerp(f * f * (3.0F - 2.0F * f), current.speed(), next.speed());
+            }
+         }
+
+         total += Math.min(50L, trim[1] - t) / (double)Math.max(0.125F, speed);
+      }
+
+      return (long)total;
+   }
+
    /** The trim range as {start, end} in ms into the clip. */
    long[] trim() {
       return this.edit.trim(this.clipLengthMs());
@@ -407,6 +429,15 @@ public final class ReplayPlayer {
    /** Plays the clip from the start with the camera switches and saves it as a new video. */
    void export(String format, boolean vertical) {
       if (this.exportFormat != null) {
+         return;
+      }
+
+      // Slow-mo makes the export play longer than the clip; check it fits the buffer before playing it all.
+      long playMs = this.exportPlayMs();
+      int buffer = KillClipperClient.instance().settings().effectiveBufferSeconds();
+      if (playMs > buffer * 1000L) {
+         this.client.inGameHud.setOverlayMessage(Text.literal("Export plays " + playMs / 1000L + " s but the buffer keeps " + buffer
+            + " s. Trim it shorter, use less slow-mo, or raise Buffer in the settings."), false);
          return;
       }
 

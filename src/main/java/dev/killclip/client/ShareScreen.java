@@ -106,7 +106,7 @@ final class ShareScreen extends Screen {
       this.status = "Preparing the clip...";
       CompletableFuture.runAsync(() -> {
          String result;
-         Path work = this.clip.resolveSibling(".ffmpeg");
+         Path work = this.clip.resolveSibling(".share");
          try {
             Files.createDirectories(work);
             Path source = this.clip;
@@ -122,6 +122,14 @@ final class ShareScreen extends Screen {
             result = code / 100 == 2 ? "Sent to Discord." : "Discord refused the upload (HTTP " + code + ").";
          } catch (Exception e) {
             result = "Share failed: " + e.getMessage();
+         }
+
+         // The shrunk copies are only for the upload.
+         try {
+            Files.deleteIfExists(work.resolve("share-vertical.mp4"));
+            Files.deleteIfExists(work.resolve("share-upload.mp4"));
+            Files.deleteIfExists(work);
+         } catch (IOException ignored) {
          }
 
          String done = result;
