@@ -13,24 +13,45 @@ import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * The editing bar shown over a playing replay (E): a timeline with the camera switches on it, buttons to add
- * and remove switches, and export. The game keeps playing behind it.
+ * The editor over a playing replay, laid out like a video editor: a clip track with trim handles, a camera track
+ * split into parts (click one to change its POV, speed and zoom), and the controls. The game keeps playing behind it.
  */
 @Environment(EnvType.CLIENT)
 final class ReplayEditorScreen extends Screen {
    private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
    private static final float[] SPEEDS = {0.25F, 0.5F, 1.0F, 1.5F, 2.0F};
    private static final float[] ZOOMS = {1.0F, 1.5F, 2.0F, 3.0F, 4.0F};
-   private static final int[] MODE_COLORS = {0xFF55FF55, 0xFF55AAFF, 0xFFFFAA00};
+   private static final int[] MODE_COLORS = {0xFF3E9E4F, 0xFF3A78C2, 0xFFC7821E};
+   private static final int PANEL = 118;
+   private static final int LABELS = 46;
+   private static final String[][] KEYS = {
+      {"Space", "Play / pause"},
+      {"Left / Right", "Jump 5 s back / forward"},
+      {"Click clip track", "Jump to that time"},
+      {"Drag yellow ends", "Trim the start and end"},
+      {"I / O", "Trim start / end at the playhead"},
+      {"Click camera part", "Pick it to change POV, speed, zoom"},
+      {"V", "Change the POV of the part"},
+      {"S", "Split: new camera part from here"},
+      {"Delete", "Merge the part into the one before"},
+      {"E", "Hide / show the editor"},
+      {"WASD Space Shift", "Fly the camera (editor hidden, paused)"},
+      {"C", "Save the spectator camera spot to the part"},
+      {"H", "Show / hide these keys"}
+   };
+   /** Kept between openings, so hiding the keys once keeps them hidden. */
+   private static boolean showKeys = true;
    private final ReplayPlayer replay;
    private String format;
    private ButtonWidget playButton;
-   private ButtonWidget cameraButton;
+   private ButtonWidget povButton;
    private ButtonWidget speedButton;
    private ButtonWidget zoomButton;
-   private ButtonWidget shapeButton;
+   private ButtonWidget cameraHereButton;
    private boolean vertical;
-   private boolean dragging;
+   /** What the mouse is dragging: 0 nothing, 1 the playhead, 2 the trim start, 3 the trim end, 4 a camera part. */
+   private int dragging;
+   private long dragMs;
 
    ReplayEditorScreen(ReplayPlayer replay) {
       super(Text.literal("Clip editor"));
@@ -40,46 +61,50 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    protected void init() {
-      int y = this.height - 26;
-      int x = 8;
-      this.playButton = this.addDrawableChild(ButtonWidget.builder(this.playLabel(), b -> {
-         this.replay.setPaused(!this.replay.paused());
-         b.setMessage(this.playLabel());
-      }).dimensions(x, y, 44, 20).build());
-      x += 48;
-      this.cameraButton = this.addDrawableChild(ButtonWidget.builder(this.cameraLabel(), b -> {
-         ReplayPlayer.CameraMode[] modes = ReplayPlayer.CameraMode.values();
-         this.replay.setMode(modes[(this.replay.mode().ordinal() + 1) % modes.length]);
-         b.setMessage(this.cameraLabel());
-      }).dimensions(x, y, 100, 20).build());
-      x += 104;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Add switch"), b -> this.replay.addSwitchHere()).dimensions(x, y, 70, 20).build());
-      x += 74;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Remove"), b -> this.replay.edit.removeNear(this.replay.clipTimeMs())).dimensions(x, y, 46, 20).build());
-      x += 50;
-      this.addDrawableChild(ButtonWidget.builder(this.formatLabel(), b -> {
-         this.format = FORMATS.get((FORMATS.indexOf(this.format) + 1) % FORMATS.size());
-         b.setMessage(this.formatLabel());
-      }).dimensions(x, y, 36, 20).build());
-      x += 40;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).build());
-      x += 48;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
-      // Second row: what the next "Add switch" uses for speed and zoom, and the export shape.
-      int top = this.barTop() - 40;
+      int top = this.panelTop();
       int right = this.barRight();
-      this.shapeButton = this.addDrawableChild(ButtonWidget.builder(this.shapeLabel(), b -> {
+      // Top row: trim buttons on the left, settings of the picked camera part on the right.
+      int x = 94;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 4, 26, 18).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 4, 30, 18).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal(this.vertical ? "9:16" : "16:9"), b -> {
          this.vertical = !this.vertical;
-         b.setMessage(this.shapeLabel());
-      }).dimensions(right - 56, top, 56, 20).build());
-      this.zoomButton = this.addDrawableChild(ButtonWidget.builder(this.zoomLabel(), b -> {
-         this.replay.setZoom(next(ZOOMS, this.replay.zoom()));
-         b.setMessage(this.zoomLabel());
-      }).dimensions(right - 130, top, 70, 20).build());
-      this.speedButton = this.addDrawableChild(ButtonWidget.builder(this.speedLabel(), b -> {
-         this.replay.setSpeed(next(SPEEDS, this.replay.speed()));
-         b.setMessage(this.speedLabel());
-      }).dimensions(right - 204, top, 70, 20).build());
+         b.setMessage(Text.literal(this.vertical ? "9:16" : "16:9"));
+      }).dimensions(right - 36, top + 4, 36, 18).build());
+      this.zoomButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
+         ReplayEdit.Switch part = this.replay.partHere();
+         part.zoom = next(ZOOMS, part.zoom());
+         this.replay.changedPart(part);
+      }).dimensions(right - 96, top + 4, 58, 18).build());
+      this.speedButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
+         ReplayEdit.Switch part = this.replay.partHere();
+         part.speed = next(SPEEDS, part.speed());
+         this.replay.changedPart(part);
+      }).dimensions(right - 162, top + 4, 64, 18).build());
+      this.cameraHereButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Camera spot"), b -> this.saveCameraSpot())
+         .dimensions(right - 230, top + 4, 66, 18).build());
+      // Bottom row.
+      int y = this.height - 24;
+      x = 8;
+      this.playButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.togglePlay()).dimensions(x, y, 40, 20).build());
+      x += 42;
+      this.povButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.nextPov()).dimensions(x, y, 84, 20).build());
+      x += 86;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
+      x += 42;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 42, 20).build());
+      x += 44;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal(this.format.toUpperCase(Locale.ROOT)), b -> {
+         this.format = FORMATS.get((FORMATS.indexOf(this.format) + 1) % FORMATS.size());
+         b.setMessage(Text.literal(this.format.toUpperCase(Locale.ROOT)));
+      }).dimensions(x, y, 36, 20).build());
+      x += 38;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).build());
+      x += 46;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 34, 20).build());
+      x += 36;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
+      this.refreshLabels();
    }
 
    private static float next(float[] options, float current) {
@@ -92,88 +117,240 @@ final class ReplayEditorScreen extends Screen {
       return options[0];
    }
 
-   private Text speedLabel() {
-      return Text.literal("Speed " + trim(this.replay.speed()) + "x");
-   }
-
-   private Text zoomLabel() {
-      return Text.literal("Zoom " + trim(this.replay.zoom()) + "x");
-   }
-
-   private Text shapeLabel() {
-      return Text.literal(this.vertical ? "9:16" : "16:9");
-   }
-
    private static String trim(float value) {
-      // Values blend between switches, so round them for the label.
+      // Values blend between parts, so round them for the label.
       return new java.math.BigDecimal(Math.round(value * 100.0F) / 100.0).stripTrailingZeros().toPlainString();
    }
 
-   private Text playLabel() {
-      return Text.literal(this.replay.paused() ? "Play" : "Pause");
+   /** The camera part under the playhead, or null before the first one. */
+   private ReplayEdit.Switch part() {
+      return this.replay.edit.at(this.replay.clipTimeMs());
    }
 
-   private Text cameraLabel() {
-      return Text.literal(this.replay.mode().shortLabel);
+   private void refreshLabels() {
+      ReplayEdit.Switch part = this.part();
+      ReplayPlayer.CameraMode mode = part != null ? part.mode : this.replay.mode();
+      this.playButton.setMessage(Text.literal(this.replay.paused() ? "Play" : "Pause"));
+      this.povButton.setMessage(Text.literal("POV: " + mode.shortLabel));
+      this.speedButton.setMessage(Text.literal("Speed " + trim(part != null ? part.speed() : 1.0F) + "x"));
+      this.zoomButton.setMessage(Text.literal("Zoom " + trim(part != null ? part.zoom() : 1.0F) + "x"));
+      this.cameraHereButton.visible = mode == ReplayPlayer.CameraMode.SPECTATOR;
    }
 
-   private Text formatLabel() {
-      return Text.literal(this.format.toUpperCase(Locale.ROOT));
+   private void togglePlay() {
+      long[] trim = this.replay.trim();
+      if (this.replay.paused() && this.replay.clipTimeMs() >= trim[1] - 50L) {
+         // At the end of the trim, play starts again from the trim start.
+         this.replay.seekClip(trim[0]);
+      }
+
+      this.replay.setPaused(!this.replay.paused());
+   }
+
+   private void nextPov() {
+      ReplayEdit.Switch part = this.replay.partHere();
+      ReplayPlayer.CameraMode[] modes = ReplayPlayer.CameraMode.values();
+      part.mode = modes[(part.mode.ordinal() + 1) % modes.length];
+      this.replay.changedPart(part);
+   }
+
+   private void split() {
+      this.replay.addSwitchHere();
+   }
+
+   private void merge() {
+      ReplayEdit.Switch part = this.part();
+      if (part != null) {
+         this.replay.edit.switches.remove(part);
+         this.replay.edit.save();
+         ReplayEdit.Switch now = this.part();
+         if (now != null) {
+            this.replay.changedPart(now);
+         }
+      }
+   }
+
+   private void saveCameraSpot() {
+      ReplayEdit.Switch part = this.replay.partHere();
+      this.replay.moveCameraOf(part);
+   }
+
+   private void trimStartHere() {
+      long[] trim = this.replay.trim();
+      this.replay.setTrim(this.replay.clipTimeMs(), trim[1]);
+   }
+
+   private void trimEndHere() {
+      long[] trim = this.replay.trim();
+      this.replay.setTrim(trim[0], this.replay.clipTimeMs());
    }
 
    private int barLeft() {
-      return 8;
+      return 8 + LABELS;
    }
 
    private int barRight() {
       return this.width - 8;
    }
 
-   private int barTop() {
-      return this.height - 44;
+   private int panelTop() {
+      return this.height - PANEL;
+   }
+
+   private int clipTrackTop() {
+      return this.panelTop() + 40;
+   }
+
+   private int cameraTrackTop() {
+      return this.panelTop() + 60;
+   }
+
+   private int xOf(long ms) {
+      long length = Math.max(1L, this.replay.clipLengthMs());
+      return this.barLeft() + (int)((this.barRight() - this.barLeft()) * Math.min(1.0, Math.max(0.0, (double)ms / length)));
+   }
+
+   private long msAt(double x) {
+      double fraction = (x - this.barLeft()) / Math.max(1.0, this.barRight() - this.barLeft());
+      return (long)(Math.max(0.0, Math.min(1.0, fraction)) * this.replay.clipLengthMs());
    }
 
    @Override
    public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      // Keep the replay visible: only a dark strip behind the controls.
-      context.fill(0, this.height - 90, this.width, this.height, 0xA0000000);
+      // Keep the replay visible: only a dark panel behind the controls.
+      context.fill(0, this.panelTop(), this.width, this.height, 0xC0101010);
+      context.fill(0, this.panelTop(), this.width, this.panelTop() + 1, 0xFF444444);
    }
 
    @Override
    public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
       if (ReplayPlayer.active() != this.replay) {
-         // Jumping back restarts the replay; reopen the editor with E once it has loaded.
+         // Jumping back restarts the replay, which opens the editor again once it has loaded.
          this.client.setScreen(null);
          return;
       }
 
+      this.refreshLabels();
       super.render(context, mouseX, mouseY, deltaTicks);
-      this.playButton.setMessage(this.playLabel());
-      this.cameraButton.setMessage(this.cameraLabel());
-      this.speedButton.setMessage(this.speedLabel());
-      this.zoomButton.setMessage(this.zoomLabel());
       int left = this.barLeft();
       int right = this.barRight();
-      int top = this.barTop();
       long length = Math.max(1L, this.replay.clipLengthMs());
-      long now = this.replay.clipTimeMs();
-      context.fill(left, top, right, top + 8, 0xFF333333);
-      int played = left + (int)((right - left) * Math.min(1.0, (double)now / length));
-      context.fill(left, top, played, top + 8, 0xFFAAAAAA);
-      for (ReplayEdit.Switch s : this.replay.edit.switches) {
-         int x = left + (int)((right - left) * Math.min(1.0, (double)s.timeMs / length));
-         context.fill(x - 1, top - 3, x + 2, top + 11, MODE_COLORS[s.mode.ordinal()]);
+      long now = this.dragging == 1 ? this.dragMs : this.replay.clipTimeMs();
+      long[] trim = this.replay.trim();
+      if (this.dragging == 2) {
+         trim = new long[]{Math.min(this.dragMs, trim[1] - 500L), trim[1]};
+      } else if (this.dragging == 3) {
+         trim = new long[]{trim[0], Math.max(this.dragMs, trim[0] + 500L)};
       }
 
-      context.fill(played - 1, top - 4, played + 1, top + 12, 0xFFFFFFFF);
-      String time = clock(now) + " / " + clock(length);
-      context.drawTextWithShadow(this.textRenderer, time, left, top - 14, 0xFFFFFFFF);
-      String help = "Switches set camera, speed and zoom from that point; speed and zoom blend to the next switch. Green 1st person, blue 3rd, orange spectator.";
-      int helpLeft = left + this.textRenderer.getWidth(time) + 8;
-      context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(help, right - helpLeft), helpLeft, top - 14, 0xFFBBBBBB);
+      int top = this.panelTop();
+      context.drawTextWithShadow(this.textRenderer, clock(now) + " / " + clock(length), 8, top + 9, 0xFFFFFFFF);
+      // Time ruler.
+      int rulerY = top + 28;
+      long step = length > 60000L ? 10000L : length > 20000L ? 5000L : 1000L;
+      for (long t = 0L; t <= length; t += step) {
+         int x = this.xOf(t);
+         context.fill(x, rulerY + 6, x + 1, rulerY + 10, 0xFF777777);
+         if (t % (step * (length > 20000L ? 2L : 5L)) == 0L) {
+            context.drawTextWithShadow(this.textRenderer, clock(t).replaceAll("\\.0$", ""), x + 2, rulerY - 1, 0xFF888888);
+         }
+      }
+
+      // Clip track: the whole fight, with the trimmed part bright and yellow handles at both ends.
+      int clipTop = this.clipTrackTop();
+      context.drawTextWithShadow(this.textRenderer, "Clip", 8, clipTop + 3, 0xFFCCCCCC);
+      context.fill(left, clipTop, right, clipTop + 14, 0xFF1C1C1C);
+      int in = this.xOf(trim[0]);
+      int out = this.xOf(trim[1]);
+      context.fill(in, clipTop, out, clipTop + 14, 0xFF4A6FA5);
+      String clipName = this.replay.file().getFileName().toString().replace(".kcreplay", "");
+      String name = this.textRenderer.trimToWidth(clock(trim[1] - trim[0]) + "  " + clipName, Math.max(0, out - in - 12));
+      context.drawTextWithShadow(this.textRenderer, name, in + 6, clipTop + 3, 0xFFFFFFFF);
+      context.fill(in, clipTop - 1, in + 3, clipTop + 15, 0xFFFFDD33);
+      context.fill(out - 3, clipTop - 1, out, clipTop + 15, 0xFFFFDD33);
+      // Camera track: one coloured part per camera switch, the picked one outlined.
+      int camTop = this.cameraTrackTop();
+      context.drawTextWithShadow(this.textRenderer, "Camera", 8, camTop + 4, 0xFFCCCCCC);
+      List<ReplayEdit.Switch> parts = this.replay.edit.switches;
+      long firstStart = parts.isEmpty() ? length : parts.get(0).timeMs;
+      if (firstStart > 0L) {
+         this.drawPart(context, this.xOf(0L), this.xOf(firstStart), camTop, 0xFF3A3A3A, "Recorded POV", false);
+      }
+
+      ReplayEdit.Switch picked = this.part();
+      for (int i = 0; i < parts.size(); i++) {
+         ReplayEdit.Switch part = parts.get(i);
+         long end = i + 1 < parts.size() ? parts.get(i + 1).timeMs : length;
+         String label = part.mode.shortLabel;
+         if (part.speed() != 1.0F) {
+            label = label + " " + trim(part.speed()) + "x";
+         }
+
+         if (part.zoom() != 1.0F) {
+            label = label + " zoom " + trim(part.zoom());
+         }
+
+         this.drawPart(context, this.xOf(part.timeMs), this.xOf(end), camTop, MODE_COLORS[part.mode.ordinal()], label, part == picked);
+      }
+
+      // Playhead across the ruler and both tracks.
+      int played = this.xOf(now);
+      context.fill(played - 1, rulerY + 4, played + 1, camTop + 17, 0xFFFFFFFF);
+      context.fill(played - 3, rulerY + 2, played + 3, rulerY + 5, 0xFFFFFFFF);
+      String hint = picked == null && firstStart > 0L && now < firstStart
+         ? "Click a camera part to pick it. H shows the keys."
+         : "Picked: " + (picked != null ? picked.mode.shortLabel : "recorded") + ". POV, Speed and Zoom change it. H: keys";
+      context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(hint, this.width - 16), 8, camTop + 22, 0xFF999999);
       if (this.replay.exporting()) {
          context.drawCenteredTextWithShadow(this.textRenderer, "Exporting...", this.width / 2, 8, 0xFFFF5555);
       }
+
+      if (showKeys) {
+         this.drawKeys(context);
+      }
+   }
+
+   private void drawPart(DrawContext context, int x0, int x1, int y, int color, String label, boolean picked) {
+      if (x1 <= x0) {
+         return;
+      }
+
+      if (picked) {
+         context.fill(x0, y - 1, x1, y + 17, 0xFFFFFFFF);
+      }
+
+      context.fill(x0 + 1, y, x1 - 1, y + 16, color);
+      String text = this.textRenderer.trimToWidth(label, Math.max(0, x1 - x0 - 6));
+      context.drawTextWithShadow(this.textRenderer, text, x0 + 4, y + 4, 0xFFFFFFFF);
+   }
+
+   private void drawKeys(DrawContext context) {
+      int keyWidth = 0;
+      int textWidth = 0;
+      for (String[] key : KEYS) {
+         keyWidth = Math.max(keyWidth, this.textRenderer.getWidth(key[0]));
+         textWidth = Math.max(textWidth, this.textRenderer.getWidth(key[1]));
+      }
+
+      int x = 8;
+      int y = 8;
+      int w = keyWidth + textWidth + 22;
+      int h = KEYS.length * 11 + 20;
+      // Shrink the list on small screens so it never covers the timeline.
+      float scale = Math.min(1.0F, Math.min((this.panelTop() - 12.0F) / h, (this.width * 0.6F) / w));
+      context.getMatrices().pushMatrix();
+      context.getMatrices().translate(x, y);
+      context.getMatrices().scale(scale, scale);
+      context.getMatrices().translate(-x, -y);
+      context.fill(x, y, x + w, y + h, 0xC0000000);
+      context.drawTextWithShadow(this.textRenderer, "Editor keys", x + 6, y + 5, 0xFFFFDD55);
+      for (int i = 0; i < KEYS.length; i++) {
+         int ly = y + 18 + i * 11;
+         context.drawTextWithShadow(this.textRenderer, KEYS[i][0], x + 6, ly, 0xFFFFFFFF);
+         context.drawTextWithShadow(this.textRenderer, KEYS[i][1], x + 14 + keyWidth, ly, 0xFFBBBBBB);
+      }
+
+      context.getMatrices().popMatrix();
    }
 
    private static String clock(long ms) {
@@ -182,9 +359,29 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseClicked(Click click, boolean doubled) {
-      if (click.button() == 0 && click.y() >= this.barTop() - 4 && click.y() <= this.barTop() + 12 && click.x() >= this.barLeft() && click.x() <= this.barRight()) {
-         this.dragging = true;
-         return true;
+      if (click.button() == 0 && click.x() >= this.barLeft() - 4 && click.x() <= this.barRight() + 4) {
+         double y = click.y();
+         int clipTop = this.clipTrackTop();
+         if (y >= this.panelTop() + 26 && y < clipTop + 16) {
+            long[] trim = this.replay.trim();
+            if (y >= clipTop - 2 && Math.abs(click.x() - this.xOf(trim[0])) <= 5) {
+               this.dragging = 2;
+            } else if (y >= clipTop - 2 && Math.abs(click.x() - this.xOf(trim[1])) <= 5) {
+               this.dragging = 3;
+            } else {
+               this.dragging = 1;
+            }
+
+            this.dragMs = this.msAt(click.x());
+            return true;
+         }
+
+         int camTop = this.cameraTrackTop();
+         if (y >= camTop - 1 && y <= camTop + 17) {
+            this.dragging = 4;
+            this.dragMs = this.msAt(click.x());
+            return true;
+         }
       }
 
       return super.mouseClicked(click, doubled);
@@ -192,7 +389,8 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseDragged(Click click, double offsetX, double offsetY) {
-      if (this.dragging) {
+      if (this.dragging != 0) {
+         this.dragMs = this.msAt(click.x());
          return true;
       }
 
@@ -201,28 +399,48 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseReleased(Click click) {
-      if (this.dragging) {
-         this.dragging = false;
-         this.seekTo(click.x());
-         return true;
+      if (this.dragging == 0) {
+         return super.mouseReleased(click);
       }
 
-      return super.mouseReleased(click);
-   }
+      int what = this.dragging;
+      this.dragging = 0;
+      long ms = this.msAt(click.x());
+      long[] trim = this.replay.trim();
+      switch (what) {
+         case 2 -> this.replay.setTrim(ms, trim[1]);
+         case 3 -> this.replay.setTrim(trim[0], ms);
+         case 4 -> {
+            // Picking a part jumps to its start, so it is the part being changed and shown.
+            ReplayEdit.Switch part = this.replay.edit.at(ms);
+            this.replay.seekClip(part != null ? part.timeMs : ms);
+         }
+         default -> this.replay.seekClip(ms);
+      }
 
-   private void seekTo(double mouseX) {
-      double fraction = (mouseX - this.barLeft()) / Math.max(1.0, this.barRight() - this.barLeft());
-      this.replay.seekClip((long)(Math.max(0.0, Math.min(1.0, fraction)) * this.replay.clipLengthMs()));
+      return true;
    }
 
    @Override
    public boolean keyPressed(KeyInput input) {
-      if (input.key() == GLFW.GLFW_KEY_E) {
-         this.close();
-         return true;
+      switch (input.key()) {
+         case GLFW.GLFW_KEY_E -> this.close();
+         case GLFW.GLFW_KEY_H -> showKeys = !showKeys;
+         case GLFW.GLFW_KEY_SPACE -> this.togglePlay();
+         case GLFW.GLFW_KEY_V -> this.nextPov();
+         case GLFW.GLFW_KEY_S -> this.split();
+         case GLFW.GLFW_KEY_DELETE, GLFW.GLFW_KEY_BACKSPACE -> this.merge();
+         case GLFW.GLFW_KEY_I -> this.trimStartHere();
+         case GLFW.GLFW_KEY_O -> this.trimEndHere();
+         case GLFW.GLFW_KEY_C -> this.saveCameraSpot();
+         case GLFW.GLFW_KEY_LEFT -> this.replay.seekClip(this.replay.clipTimeMs() - 5000L);
+         case GLFW.GLFW_KEY_RIGHT -> this.replay.seekClip(this.replay.clipTimeMs() + 5000L);
+         default -> {
+            return super.keyPressed(input);
+         }
       }
 
-      return super.keyPressed(input);
+      return true;
    }
 
    @Override

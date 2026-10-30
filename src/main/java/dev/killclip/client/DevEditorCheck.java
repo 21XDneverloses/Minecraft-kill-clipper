@@ -61,10 +61,11 @@ final class DevEditorCheck {
             case 6 -> {
                shot(client, "editor-share.png");
                ReplayPlayer.start(client, Path.of(FILE));
+               ReplayPlayer.active().openEditorOnLoad = true;
             }
             case 7 -> {
                ReplayPlayer replay = ReplayPlayer.active();
-               if (replay == null || client.world == null || client.currentScreen != null) {
+               if (replay == null || client.world == null || !(client.currentScreen instanceof ReplayEditorScreen)) {
                   return;
                }
 
@@ -74,6 +75,8 @@ final class DevEditorCheck {
                replay.edit.put(new ReplayEdit.Switch(3000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX() + 6, p.getY() + 3, p.getZ(), 90.0F, 25.0F, 1.0F, 1.0F));
                replay.edit.put(new ReplayEdit.Switch(6000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX(), p.getY() + 3, p.getZ() + 6, 180.0F, 25.0F, 0.25F, 3.0F));
                replay.edit.put(new ReplayEdit.Switch(8000L, ReplayPlayer.CameraMode.THIRD_PERSON, 0, 0, 0, 0, 0));
+               replay.setTrim(1000L, 9000L);
+               KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR editor opened by itself, trim {}", java.util.Arrays.toString(replay.trim()));
                client.setScreen(new ReplayEditorScreen(replay));
             }
             case 8 -> shot(client, "editor-timeline.png");

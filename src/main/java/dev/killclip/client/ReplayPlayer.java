@@ -109,6 +109,8 @@ public final class ReplayPlayer {
    private boolean hudWasHidden;
    final ReplayEdit edit;
    private ReplayEdit.Switch lastSwitch;
+   /** Opens the editor bar as soon as the replay has loaded (set when opened from the clip list). */
+   boolean openEditorOnLoad;
    /** Current zoom (1 = normal field of view). */
    private float zoom = 1.0F;
    /** Export: the clip is played from the start with the camera switches while the recorder captures it. */
@@ -279,6 +281,7 @@ public final class ReplayPlayer {
       String keepExport = this.exportFormat;
       boolean keepVertical = this.exportVertical;
       net.minecraft.network.message.ChatVisibility keepChat = this.chatBeforeExport;
+      boolean keepEditor = this.openEditorOnLoad || this.client.currentScreen instanceof ReplayEditorScreen;
       // The restarted replay takes over the export; this one must not undo it when it closes.
       this.exportFormat = null;
       this.chatBeforeExport = null;
@@ -292,6 +295,7 @@ public final class ReplayPlayer {
          restarted.exportFormat = keepExport;
          restarted.exportVertical = keepVertical;
          restarted.chatBeforeExport = keepChat;
+         restarted.openEditorOnLoad = keepEditor && keepExport == null;
       } catch (IOException e) {
          KillClipperClient.LOGGER.warn("Could not restart the replay", e);
          if (keepChat != null) {
@@ -324,8 +328,70 @@ public final class ReplayPlayer {
       return this.exportFormat != null;
    }
 
+   /** The trim range as {start, end} in ms into the clip. */
+   long[] trim() {
+      return this.edit.trim(this.clipLengthMs());
+   }
+
+   void setTrim(long startMs, long endMs) {
+      long length = this.clipLengthMs();
+      this.edit.trimStartMs = MathHelper.clamp(startMs, 0L, Math.max(0L, length - 500L));
+      long end = MathHelper.clamp(endMs, this.edit.trimStartMs + 500L, length);
+      this.edit.trimEndMs = end >= length ? 0L : end;
+      this.edit.save();
+   }
+
+   /**
+    * The camera part under the playhead, for changing its POV, speed or zoom. Before the first switch there is
+    * none yet, so one is made at the start of the clip with the current camera.
+    */
+   ReplayEdit.Switch partHere() {
+      ReplayEdit.Switch part = this.edit.at(this.clipTimeMs());
+      if (part == null) {
+         long now = this.clipTimeMs();
+         this.addSwitchAt(0L);
+         part = this.edit.at(now);
+      }
+
+      return part;
+   }
+
+   /** Saves a change to a camera part and shows it right away. */
+   void changedPart(ReplayEdit.Switch part) {
+      this.edit.save();
+      this.lastSwitch = null;
+      if (this.edit.at(this.clipTimeMs()) == part) {
+         this.setMode(part.mode);
+         this.setSpeed(part.speed());
+         this.setZoom(part.zoom());
+         if (part.mode == CameraMode.SPECTATOR && this.freeCamera != null) {
+            this.freeCamera.setPosition(part.x, part.y, part.z);
+            this.freeCamera.setYaw(part.yaw);
+            this.freeCamera.setPitch(part.pitch);
+            this.freeCamera.resetPosition();
+         }
+      }
+   }
+
+   /** Moves a spectator part's camera to where the free camera is now. */
+   void moveCameraOf(ReplayEdit.Switch part) {
+      MarkerEntity camera = this.freeCamera;
+      if (camera != null) {
+         part.x = camera.getX();
+         part.y = camera.getY();
+         part.z = camera.getZ();
+         part.yaw = camera.getYaw();
+         part.pitch = camera.getPitch();
+         this.edit.save();
+      }
+   }
+
    /** Adds a camera switch at the current time with the current camera (and the free camera's spot). */
    void addSwitchHere() {
+      this.addSwitchAt(this.clipTimeMs());
+   }
+
+   private void addSwitchAt(long timeMs) {
       MarkerEntity camera = this.freeCamera;
       ClientPlayerEntity player = this.client.player;
       double x = camera != null ? camera.getX() : player != null ? player.getX() : 0.0;
@@ -333,7 +399,7 @@ public final class ReplayPlayer {
       double z = camera != null ? camera.getZ() : player != null ? player.getZ() : 0.0;
       float yaw = camera != null ? camera.getYaw() : player != null ? player.getYaw() : 0.0F;
       float pitch = camera != null ? camera.getPitch() : player != null ? player.getPitch() : 0.0F;
-      ReplayEdit.Switch added = new ReplayEdit.Switch(this.clipTimeMs(), this.mode, x, y, z, yaw, pitch, this.speed, this.zoom);
+      ReplayEdit.Switch added = new ReplayEdit.Switch(timeMs, this.mode, x, y, z, yaw, pitch, this.speed, this.zoom);
       this.edit.put(added);
       this.lastSwitch = added;
    }
@@ -353,7 +419,7 @@ public final class ReplayPlayer {
       this.paused = false;
       this.speed = 1.0F;
       ReplayPlayer before = active;
-      this.seekClip(0L);
+      this.seekClip(this.trim()[0]);
       if (active == before) {
          this.lastSwitch = null;
       }
@@ -369,7 +435,8 @@ public final class ReplayPlayer {
       }
 
       if (saved && format != null && start > 0L) {
-         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L, this.file, format, this.exportVertical);
+         // Stop just before the "saving" message shows up on screen.
+         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L - 100L, this.file, format, this.exportVertical);
       }
    }
 
@@ -452,6 +519,7 @@ public final class ReplayPlayer {
          target = this.timeMs + 50L;
       }
 
+      long before = this.timeMs;
       this.feedUntil(target);
       this.timeMs = Math.max(this.timeMs, target);
       if (this.client.world != null) {
@@ -476,17 +544,26 @@ public final class ReplayPlayer {
          this.followSwitches();
       }
 
-      if (this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.client.currentScreen == null
+      long[] trim = this.trim();
+      if (this.openEditorOnLoad && !this.exporting() && this.client.world != null && this.client.currentScreen == null
          && this.timeMs >= this.clipStartMs && this.seekTargetMs < 0L) {
-         this.exportStartRealMs = System.nanoTime() / 1000000L;
+         this.openEditorOnLoad = false;
+         this.client.setScreen(new ReplayEditorScreen(this));
       }
 
-      if (this.timeMs >= this.clipEndMs && !this.paused) {
+      if (this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.client.currentScreen == null
+         && this.timeMs >= this.clipStartMs + trim[0] && this.seekTargetMs < 0L) {
+         this.exportStartRealMs = System.nanoTime() / 1000000L;
+         this.client.inGameHud.getChatHud().clear(false);
+      }
+
+      long end = this.clipStartMs + trim[1];
+      if (!this.paused && (this.timeMs >= this.clipEndMs || this.exportStartRealMs > 0L && this.timeMs >= end || before < end && this.timeMs >= end)) {
          this.setPaused(true);
          if (this.exporting()) {
             this.finishExport(true);
          } else {
-            this.client.inGameHud.setOverlayMessage(Text.literal("End of clip. Press E to edit."), false);
+            this.client.inGameHud.setOverlayMessage(Text.literal("End of the clip. Press E for the editor."), false);
          }
       }
    }
@@ -717,6 +794,11 @@ public final class ReplayPlayer {
 
       if (pressed(GLFW.GLFW_KEY_V)) {
          this.setMode(CameraMode.values()[(this.mode.ordinal() + 1) % CameraMode.values().length]);
+      }
+
+      if (pressed(GLFW.GLFW_KEY_C) && this.mode == CameraMode.SPECTATOR) {
+         this.moveCameraOf(this.partHere());
+         this.client.inGameHud.setOverlayMessage(Text.literal("Saved this camera spot to the part"), false);
       }
 
       if (pressed(GLFW.GLFW_KEY_P)) {

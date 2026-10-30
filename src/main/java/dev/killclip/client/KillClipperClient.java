@@ -123,8 +123,8 @@ public final class KillClipperClient implements ClientModInitializer {
       ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
          this.reset();
          this.refreshVanillaPatterns();
-         if (ReplayPlayer.playing()) {
-            tell("Replay: V camera (first person, third person, spectator), P pause, ←/→ 5 s, ↑/↓ speed. Esc → Disconnect to leave.");
+         if (ReplayPlayer.playing() && !ReplayPlayer.active().exporting()) {
+            tell("Replay: E opens the editor (H there shows all keys). Esc → Disconnect to leave.");
          } else {
             tell("Loaded. " + this.recordingSummary() + ". Use /killclip status, /killclip test or /killclip menu.");
          }
@@ -625,7 +625,7 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       String name = replay.getFileName().toString().replace(".kcreplay", "");
-      notify("● Saving edited clip...", Formatting.AQUA);
+      // No "saving" message here: it would end up in the last frames of the export.
       this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
          file -> {
             notify("✓ Edited clip saved: " + file, Formatting.GREEN);

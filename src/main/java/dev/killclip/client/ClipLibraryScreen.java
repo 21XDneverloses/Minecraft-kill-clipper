@@ -121,14 +121,17 @@ public final class ClipLibraryScreen extends Screen {
 
       int bottom = this.height - 52;
       Path replay = this.selected == null ? null : findReplay(this.selected);
-      ButtonWidget edit = ButtonWidget.builder(Text.literal("Edit fight"), b -> this.openReplay(replay)).dimensions(x, bottom, 80, 20).build();
-      edit.active = replay != null;
-      this.addDrawableChild(edit);
       boolean video = this.selected != null && VideoTools.isVideo(this.selected);
-      ButtonWidget trim = ButtonWidget.builder(Text.literal("Trim / convert"), b -> this.client.setScreen(new VideoTrimScreen(this, this.selected)))
-         .dimensions(x + 84, bottom, 90, 20).build();
-      trim.active = video;
-      this.addDrawableChild(trim);
+      // One editor: a clip with its fight replay opens the full editor (trim and camera); a plain video opens trim.
+      ButtonWidget edit = ButtonWidget.builder(Text.literal(replay != null ? "Edit" : "Edit (trim only)"), b -> {
+         if (replay != null) {
+            this.openReplay(replay);
+         } else {
+            this.client.setScreen(new VideoTrimScreen(this, this.selected));
+         }
+      }).dimensions(x, bottom, 174, 20).build();
+      edit.active = replay != null || video;
+      this.addDrawableChild(edit);
       ButtonWidget share = ButtonWidget.builder(Text.literal("Share..."), b -> this.client.setScreen(new ShareScreen(this, this.selected)))
          .dimensions(x + 178, bottom, 70, 20).build();
       share.active = video;
@@ -158,6 +161,10 @@ public final class ClipLibraryScreen extends Screen {
 
       try {
          ReplayPlayer.start(this.client, replay);
+         ReplayPlayer started = ReplayPlayer.active();
+         if (started != null) {
+            started.openEditorOnLoad = true;
+         }
       } catch (IOException | RuntimeException e) {
          this.status = "Could not open the replay: " + e.getMessage();
          KillClipperClient.LOGGER.warn("Could not open replay {}", replay, e);

@@ -62,10 +62,16 @@ final class ReplayEdit {
 
    private static final class Saved {
       List<Switch> switches = new ArrayList<>();
+      long trimStartMs;
+      long trimEndMs;
    }
 
    private final transient Path file;
    final List<Switch> switches = new ArrayList<>();
+   /** Where the export starts, in ms into the clip. */
+   long trimStartMs;
+   /** Where the export ends, in ms into the clip; 0 means the end of the clip. */
+   long trimEndMs;
 
    private ReplayEdit(Path file) {
       this.file = file;
@@ -86,6 +92,11 @@ final class ReplayEdit {
                saved.switches.stream().filter(s -> s.mode != null).forEach(edit.switches::add);
                edit.sort();
             }
+
+            if (saved != null) {
+               edit.trimStartMs = Math.max(0L, saved.trimStartMs);
+               edit.trimEndMs = Math.max(0L, saved.trimEndMs);
+            }
          } catch (IOException | RuntimeException e) {
             KillClipperClient.LOGGER.warn("Could not read camera edits {}", edit.file, e);
          }
@@ -97,6 +108,8 @@ final class ReplayEdit {
    void save() {
       Saved saved = new Saved();
       saved.switches = this.switches;
+      saved.trimStartMs = this.trimStartMs;
+      saved.trimEndMs = this.trimEndMs;
       try {
          Files.writeString(this.file, GSON.toJson(saved));
       } catch (IOException e) {
@@ -146,6 +159,13 @@ final class ReplayEdit {
       }
 
       return found;
+   }
+
+   /** The trim range inside a clip of {@code lengthMs}: {start, end}, at least half a second long. */
+   long[] trim(long lengthMs) {
+      long end = this.trimEndMs <= 0L ? lengthMs : Math.min(this.trimEndMs, lengthMs);
+      long start = Math.min(this.trimStartMs, Math.max(0L, end - 500L));
+      return new long[]{start, end};
    }
 
    Switch after(Switch current) {
