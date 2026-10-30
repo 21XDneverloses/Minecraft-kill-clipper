@@ -87,6 +87,51 @@ public final class VideoTools {
       }
    }
 
+   /** Makes a vertical 9:16 copy for Shorts, TikTok and Reels: the middle of the picture, full height. */
+   public static void vertical(String ffmpeg, Path input, Path output) throws IOException, InterruptedException {
+      Files.deleteIfExists(output);
+      List<String> cmd = new ArrayList<>(List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", input.toString(),
+         "-vf", "crop=trunc(ih*9/16/2)*2:ih,scale=-2:'min(1920,ih)'", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"));
+      String type = extension(output);
+      if (type.equals("mp4") || type.equals("mov")) {
+         cmd.addAll(List.of("-movflags", "+faststart"));
+      }
+
+      cmd.add(output.toString());
+      if (!run(cmd, 600L) || !Files.isRegularFile(output)) {
+         throw new IOException("FFmpeg could not make the vertical video");
+      }
+   }
+
+   /**
+    * Re-encodes a video so it fits in {@code maxBytes} (Discord's upload limit), as H.264 MP4. Returns
+    * {@code input} itself when it already fits.
+    */
+   public static Path fitSize(String ffmpeg, Path input, long maxBytes, Path output) throws IOException, InterruptedException {
+      if (Files.size(input) <= maxBytes && extension(input).equals("mp4")) {
+         return input;
+      }
+
+      double seconds = Math.max(1.0, duration(ffmpeg, input));
+      long audioBits = 96_000L;
+      // Leave 8% for the container; never go below a watchable rate.
+      long videoBits = Math.max(300_000L, (long)(maxBytes * 8 * 0.92 / seconds) - audioBits);
+      String height = videoBits < 1_500_000L ? "720" : "1080";
+      for (long bits = videoBits; bits >= 200_000L; bits = bits * 3 / 4) {
+         Files.deleteIfExists(output);
+         List<String> cmd = List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", input.toString(),
+            "-vf", "scale=-2:'min(" + height + ",ih)'", "-c:v", "libx264", "-preset", "veryfast", "-b:v", String.valueOf(bits),
+            "-maxrate", String.valueOf(bits * 3 / 2), "-bufsize", String.valueOf(bits * 2), "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", output.toString());
+         if (run(cmd, 600L) && Files.isRegularFile(output) && Files.size(output) <= maxBytes) {
+            return output;
+         }
+      }
+
+      throw new IOException("could not make the clip small enough to upload");
+   }
+
    private static boolean run(List<String> command, long timeoutSeconds) throws IOException, InterruptedException {
       Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
       if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {

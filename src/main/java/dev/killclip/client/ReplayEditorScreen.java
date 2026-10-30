@@ -19,11 +19,17 @@ import org.lwjgl.glfw.GLFW;
 @Environment(EnvType.CLIENT)
 final class ReplayEditorScreen extends Screen {
    private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
+   private static final float[] SPEEDS = {0.25F, 0.5F, 1.0F, 1.5F, 2.0F};
+   private static final float[] ZOOMS = {1.0F, 1.5F, 2.0F, 3.0F, 4.0F};
    private static final int[] MODE_COLORS = {0xFF55FF55, 0xFF55AAFF, 0xFFFFAA00};
    private final ReplayPlayer replay;
    private String format;
    private ButtonWidget playButton;
    private ButtonWidget cameraButton;
+   private ButtonWidget speedButton;
+   private ButtonWidget zoomButton;
+   private ButtonWidget shapeButton;
+   private boolean vertical;
    private boolean dragging;
 
    ReplayEditorScreen(ReplayPlayer replay) {
@@ -56,9 +62,51 @@ final class ReplayEditorScreen extends Screen {
          b.setMessage(this.formatLabel());
       }).dimensions(x, y, 36, 20).build());
       x += 40;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.replay.export(this.format)).dimensions(x, y, 44, 20).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).build());
       x += 48;
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
+      // Second row: what the next "Add switch" uses for speed and zoom, and the export shape.
+      int top = this.barTop() - 40;
+      int right = this.barRight();
+      this.shapeButton = this.addDrawableChild(ButtonWidget.builder(this.shapeLabel(), b -> {
+         this.vertical = !this.vertical;
+         b.setMessage(this.shapeLabel());
+      }).dimensions(right - 56, top, 56, 20).build());
+      this.zoomButton = this.addDrawableChild(ButtonWidget.builder(this.zoomLabel(), b -> {
+         this.replay.setZoom(next(ZOOMS, this.replay.zoom()));
+         b.setMessage(this.zoomLabel());
+      }).dimensions(right - 130, top, 70, 20).build());
+      this.speedButton = this.addDrawableChild(ButtonWidget.builder(this.speedLabel(), b -> {
+         this.replay.setSpeed(next(SPEEDS, this.replay.speed()));
+         b.setMessage(this.speedLabel());
+      }).dimensions(right - 204, top, 70, 20).build());
+   }
+
+   private static float next(float[] options, float current) {
+      for (float option : options) {
+         if (option > current + 0.001F) {
+            return option;
+         }
+      }
+
+      return options[0];
+   }
+
+   private Text speedLabel() {
+      return Text.literal("Speed " + trim(this.replay.speed()) + "x");
+   }
+
+   private Text zoomLabel() {
+      return Text.literal("Zoom " + trim(this.replay.zoom()) + "x");
+   }
+
+   private Text shapeLabel() {
+      return Text.literal(this.vertical ? "9:16" : "16:9");
+   }
+
+   private static String trim(float value) {
+      // Values blend between switches, so round them for the label.
+      return new java.math.BigDecimal(Math.round(value * 100.0F) / 100.0).stripTrailingZeros().toPlainString();
    }
 
    private Text playLabel() {
@@ -88,7 +136,7 @@ final class ReplayEditorScreen extends Screen {
    @Override
    public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
       // Keep the replay visible: only a dark strip behind the controls.
-      context.fill(0, this.height - 62, this.width, this.height, 0xA0000000);
+      context.fill(0, this.height - 90, this.width, this.height, 0xA0000000);
    }
 
    @Override
@@ -102,6 +150,8 @@ final class ReplayEditorScreen extends Screen {
       super.render(context, mouseX, mouseY, deltaTicks);
       this.playButton.setMessage(this.playLabel());
       this.cameraButton.setMessage(this.cameraLabel());
+      this.speedButton.setMessage(this.speedLabel());
+      this.zoomButton.setMessage(this.zoomLabel());
       int left = this.barLeft();
       int right = this.barRight();
       int top = this.barTop();
@@ -116,10 +166,11 @@ final class ReplayEditorScreen extends Screen {
       }
 
       context.fill(played - 1, top - 4, played + 1, top + 12, 0xFFFFFFFF);
-      String time = clock(now) + " / " + clock(length) + (this.replay.speed() != 1.0F ? "   " + this.replay.speed() + "x" : "");
+      String time = clock(now) + " / " + clock(length);
       context.drawTextWithShadow(this.textRenderer, time, left, top - 14, 0xFFFFFFFF);
-      String help = "Switches: green first person, blue third person, orange spectator. Two spectator switches in a row fly the camera between them.";
-      context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(help, right - left - 90), left + 90, top - 14, 0xFFBBBBBB);
+      String help = "Switches set camera, speed and zoom from that point; speed and zoom blend to the next switch. Green 1st person, blue 3rd, orange spectator.";
+      int helpLeft = left + this.textRenderer.getWidth(time) + 8;
+      context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(help, right - helpLeft), helpLeft, top - 14, 0xFFBBBBBB);
       if (this.replay.exporting()) {
          context.drawCenteredTextWithShadow(this.textRenderer, "Exporting...", this.width / 2, 8, 0xFFFF5555);
       }

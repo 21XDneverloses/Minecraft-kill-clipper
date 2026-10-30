@@ -121,15 +121,19 @@ public final class ClipLibraryScreen extends Screen {
 
       int bottom = this.height - 52;
       Path replay = this.selected == null ? null : findReplay(this.selected);
-      ButtonWidget edit = ButtonWidget.builder(Text.literal("Edit fight (cameras)"), b -> this.openReplay(replay)).dimensions(x, bottom, 120, 20).build();
+      ButtonWidget edit = ButtonWidget.builder(Text.literal("Edit fight"), b -> this.openReplay(replay)).dimensions(x, bottom, 80, 20).build();
       edit.active = replay != null;
       this.addDrawableChild(edit);
       boolean video = this.selected != null && VideoTools.isVideo(this.selected);
       ButtonWidget trim = ButtonWidget.builder(Text.literal("Trim / convert"), b -> this.client.setScreen(new VideoTrimScreen(this, this.selected)))
-         .dimensions(x + 124, bottom, 100, 20).build();
+         .dimensions(x + 84, bottom, 90, 20).build();
       trim.active = video;
       this.addDrawableChild(trim);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Import video..."), b -> this.importVideo()).dimensions(x + 228, bottom, listWidth - 228, 20).build());
+      ButtonWidget share = ButtonWidget.builder(Text.literal("Share..."), b -> this.client.setScreen(new ShareScreen(this, this.selected)))
+         .dimensions(x + 178, bottom, 70, 20).build();
+      share.active = video;
+      this.addDrawableChild(share);
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Import video..."), b -> this.importVideo()).dimensions(x + 252, bottom, listWidth - 252, 20).build());
       ButtonWidget previous = ButtonWidget.builder(Text.literal("<"), b -> {
          this.page--;
          this.clearAndInit();
@@ -142,8 +146,9 @@ public final class ClipLibraryScreen extends Screen {
       }).dimensions(x + 34, bottom + 24, 30, 20).build();
       next.active = this.page < pages - 1;
       this.addDrawableChild(next);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Open folder"), b -> KillClipperClient.instance().openClipsFolder()).dimensions(x + 68, bottom + 24, 100, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close()).dimensions(x + 172, bottom + 24, listWidth - 172, 20).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Stats"), b -> this.client.setScreen(new StatsScreen(this))).dimensions(x + 68, bottom + 24, 60, 20).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Open folder"), b -> KillClipperClient.instance().openClipsFolder()).dimensions(x + 132, bottom + 24, 90, 20).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close()).dimensions(x + 226, bottom + 24, listWidth - 226, 20).build());
    }
 
    private void openReplay(Path replay) {

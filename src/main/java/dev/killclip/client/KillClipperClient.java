@@ -84,6 +84,8 @@ public final class KillClipperClient implements ClientModInitializer {
    private final long launchMs = nowMs();
    private boolean selfTestDone;
    private boolean devConnected;
+   private boolean wasDead;
+   final KillStats stats = KillStats.load();
 
    public static KillClipperClient instance() {
       return INSTANCE;
@@ -172,7 +174,13 @@ public final class KillClipperClient implements ClientModInitializer {
 
          this.runDevReplay(client);
          DevEditorCheck.tick(client);
-         if (client.player != null && client.player.isDead()) {
+         boolean dead = client.player != null && client.player.isDead();
+         if (dead && !this.wasDead && !ReplayPlayer.playing() && client.world != null) {
+            this.stats.death(this.host());
+         }
+
+         this.wasDead = dead;
+         if (dead) {
             this.lastSelfDeathMs = nowMs();
          }
 
@@ -201,6 +209,11 @@ public final class KillClipperClient implements ClientModInitializer {
             return 1;
          }));
          root.then(ClientCommandManager.literal("status").executes(context -> this.status()));
+         root.then(ClientCommandManager.literal("stats").executes(context -> {
+            MinecraftClient client = MinecraftClient.getInstance();
+            client.send(() -> client.setScreen(new StatsScreen(null)));
+            return 1;
+         }));
          root.then(ClientCommandManager.literal("on").executes(context -> this.setEnabled(true)));
          root.then(ClientCommandManager.literal("off").executes(context -> this.setEnabled(false)));
          root.then(ClientCommandManager.literal("reload").executes(context -> this.reload()));
@@ -284,6 +297,7 @@ public final class KillClipperClient implements ClientModInitializer {
       long receipt = nowMs();
       this.hits.forget(victim);
       if (this.duplicates.accept(victim, receipt, this.config.duplicateWindowMs)) {
+         this.stats.kill(this.host());
          LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
          this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
       }
@@ -415,6 +429,10 @@ public final class KillClipperClient implements ClientModInitializer {
 
    private void saveStreakClip(StreakTracker.Streak streak) {
       boolean isStreak = streak.kills() >= this.config.streakMinKills;
+      if (isStreak) {
+         this.stats.streak(this.host(), streak.kills());
+      }
+
       String label = isStreak ? streak.kills() + "-kill-streak" : "kill";
       String title = isStreak ? streak.kills() + "-kill streak" : "Kill";
       long to = streak.lastKillMs() + this.config.postRollMs;
@@ -599,7 +617,7 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    /** Saves an exported replay edit: the recorder captured it while it played. */
-   void exportEdit(long fromMs, long toMs, Path replay, String format) {
+   void exportEdit(long fromMs, long toMs, Path replay, String format, boolean vertical) {
       long length = toMs - fromMs;
       if (length > this.config.effectiveBufferSeconds() * 1000L) {
          notify("✗ Export is " + length / 1000L + " s but the buffer only keeps " + this.config.effectiveBufferSeconds() + " s. Raise Buffer in the settings.", Formatting.RED);
@@ -609,8 +627,34 @@ public final class KillClipperClient implements ClientModInitializer {
       String name = replay.getFileName().toString().replace(".kcreplay", "");
       notify("● Saving edited clip...", Formatting.AQUA);
       this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
-         file -> notify("✓ Edited clip saved: " + file, Formatting.GREEN),
+         file -> {
+            notify("✓ Edited clip saved: " + file, Formatting.GREEN);
+            if (vertical) {
+               this.makeVertical(this.config.clipsDir().resolve(file));
+            }
+         },
          error -> notify("✗ Export failed: " + error, Formatting.RED));
+   }
+
+   /** Saves a 9:16 copy of a clip next to it (name_vertical.mp4). */
+   void makeVertical(Path clip) {
+      String ffmpeg = this.ffmpeg();
+      if (ffmpeg == null) {
+         return;
+      }
+
+      String name = clip.getFileName().toString();
+      int dot = name.lastIndexOf('.');
+      Path output = clip.resolveSibling((dot > 0 ? name.substring(0, dot) : name) + "_vertical.mp4");
+      notify("● Making the vertical (9:16) version...", Formatting.AQUA);
+      java.util.concurrent.CompletableFuture.runAsync(() -> {
+         try {
+            dev.killclip.core.VideoTools.vertical(ffmpeg, clip, output);
+            MinecraftClient.getInstance().execute(() -> notify("✓ Vertical clip saved: " + output.getFileName(), Formatting.GREEN));
+         } catch (Exception e) {
+            MinecraftClient.getInstance().execute(() -> notify("✗ Vertical clip failed: " + e.getMessage(), Formatting.RED));
+         }
+      });
    }
 
    /** Saves the last 10 seconds right now. */

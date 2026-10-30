@@ -29,6 +29,25 @@ final class ReplayEdit {
       double z;
       float yaw;
       float pitch;
+      /** Playback speed from here on (0.25 is slow-mo); blends smoothly to the next switch's speed. */
+      float speed = 1.0F;
+      /** Zoom from here on (2 is twice as close); blends smoothly to the next switch's zoom. */
+      float zoom = 1.0F;
+
+      Switch(long timeMs, ReplayPlayer.CameraMode mode, double x, double y, double z, float yaw, float pitch, float speed, float zoom) {
+         this(timeMs, mode, x, y, z, yaw, pitch);
+         this.speed = speed;
+         this.zoom = zoom;
+      }
+
+      /** Edits saved before speed and zoom existed read them as 0. */
+      float speed() {
+         return this.speed > 0.0F ? this.speed : 1.0F;
+      }
+
+      float zoom() {
+         return this.zoom > 0.0F ? this.zoom : 1.0F;
+      }
 
       Switch(long timeMs, ReplayPlayer.CameraMode mode, double x, double y, double z, float yaw, float pitch) {
          this.timeMs = timeMs;

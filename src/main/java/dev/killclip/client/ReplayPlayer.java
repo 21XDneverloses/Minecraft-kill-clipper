@@ -109,8 +109,11 @@ public final class ReplayPlayer {
    private boolean hudWasHidden;
    final ReplayEdit edit;
    private ReplayEdit.Switch lastSwitch;
+   /** Current zoom (1 = normal field of view). */
+   private float zoom = 1.0F;
    /** Export: the clip is played from the start with the camera switches while the recorder captures it. */
    private String exportFormat;
+   private boolean exportVertical;
    private long exportStartRealMs;
    private net.minecraft.network.message.ChatVisibility chatBeforeExport;
 
@@ -274,6 +277,7 @@ public final class ReplayPlayer {
       boolean keepPaused = this.paused;
       float keepSpeed = this.speed;
       String keepExport = this.exportFormat;
+      boolean keepVertical = this.exportVertical;
       net.minecraft.network.message.ChatVisibility keepChat = this.chatBeforeExport;
       // The restarted replay takes over the export; this one must not undo it when it closes.
       this.exportFormat = null;
@@ -286,6 +290,7 @@ public final class ReplayPlayer {
          restarted.paused = keepPaused;
          restarted.speed = keepSpeed;
          restarted.exportFormat = keepExport;
+         restarted.exportVertical = keepVertical;
          restarted.chatBeforeExport = keepChat;
       } catch (IOException e) {
          KillClipperClient.LOGGER.warn("Could not restart the replay", e);
@@ -301,6 +306,20 @@ public final class ReplayPlayer {
       this.client.inGameHud.setOverlayMessage(Text.literal("Camera: " + mode.label), false);
    }
 
+   public float zoom() {
+      return this.zoom;
+   }
+
+   public void setZoom(float zoom) {
+      this.zoom = MathHelper.clamp(zoom, 1.0F, 8.0F);
+   }
+
+   /** Field of view divisor for the game renderer: 1 unless a replay is zoomed in. */
+   public static float fovDivisor() {
+      ReplayPlayer player = active;
+      return player == null ? 1.0F : player.zoom;
+   }
+
    public boolean exporting() {
       return this.exportFormat != null;
    }
@@ -314,18 +333,19 @@ public final class ReplayPlayer {
       double z = camera != null ? camera.getZ() : player != null ? player.getZ() : 0.0;
       float yaw = camera != null ? camera.getYaw() : player != null ? player.getYaw() : 0.0F;
       float pitch = camera != null ? camera.getPitch() : player != null ? player.getPitch() : 0.0F;
-      ReplayEdit.Switch added = new ReplayEdit.Switch(this.clipTimeMs(), this.mode, x, y, z, yaw, pitch);
+      ReplayEdit.Switch added = new ReplayEdit.Switch(this.clipTimeMs(), this.mode, x, y, z, yaw, pitch, this.speed, this.zoom);
       this.edit.put(added);
       this.lastSwitch = added;
    }
 
    /** Plays the clip from the start with the camera switches and saves it as a new video. */
-   void export(String format) {
+   void export(String format, boolean vertical) {
       if (this.exportFormat != null) {
          return;
       }
 
       this.exportFormat = format;
+      this.exportVertical = vertical;
       this.exportStartRealMs = 0L;
       this.chatBeforeExport = this.client.options.getChatVisibility().getValue();
       this.client.options.getChatVisibility().setValue(net.minecraft.network.message.ChatVisibility.HIDDEN);
@@ -349,7 +369,7 @@ public final class ReplayPlayer {
       }
 
       if (saved && format != null && start > 0L) {
-         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L, this.file, format);
+         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L, this.file, format, this.exportVertical);
       }
    }
 
@@ -370,8 +390,21 @@ public final class ReplayPlayer {
          this.applyCamera();
       }
 
+      // Speed ramps and zoom blend smoothly from this switch to the next one.
+      ReplayEdit.Switch next = this.edit.after(current);
+      float blend = 0.0F;
+      if (next != null && next.timeMs > current.timeMs) {
+         float t = MathHelper.clamp((float)(this.clipTimeMs() - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
+         blend = t * t * (3.0F - 2.0F * t);
+      }
+
+      float targetSpeed = next == null ? current.speed() : MathHelper.lerp(blend, current.speed(), next.speed());
+      if (Math.abs(targetSpeed - this.speed) > 0.001F) {
+         this.setSpeed(targetSpeed);
+      }
+
+      this.setZoom(next == null ? current.zoom() : MathHelper.lerp(blend, current.zoom(), next.zoom()));
       if (current.mode == CameraMode.SPECTATOR && this.freeCamera != null) {
-         ReplayEdit.Switch next = this.edit.after(current);
          double x = current.x;
          double y = current.y;
          double z = current.z;

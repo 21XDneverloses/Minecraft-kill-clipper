@@ -43,6 +43,8 @@ public final class ClipConfig {
    public String encoder = "libx264";
    /** Video file type for saved clips. */
    public String fileFormat = "mp4";
+   /** Discord webhook URL for "Share to Discord" (kept only in this config file). */
+   public String discordWebhook = "";
    /** Seconds of video kept ready to clip; 0 picks it from the clip settings. */
    public int bufferSeconds = 0;
    public String audioSource = "game";

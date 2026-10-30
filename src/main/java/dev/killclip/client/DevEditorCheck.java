@@ -48,9 +48,21 @@ final class DevEditorCheck {
 
                client.setScreen(new VideoTrimScreen(client.currentScreen, video));
             }
-            case 4 -> shot(client, "editor-trim.png");
-            case 5 -> ReplayPlayer.start(client, Path.of(FILE));
+            case 4 -> {
+               shot(client, "editor-trim.png");
+               KillClipperClient.instance().stats.kill("dev.example.net");
+               KillClipperClient.instance().stats.streak("dev.example.net", 3);
+               client.setScreen(new StatsScreen(client.currentScreen));
+            }
+            case 5 -> {
+               shot(client, "editor-stats.png");
+               client.setScreen(new ShareScreen(client.currentScreen, Path.of(FILE).resolveSibling("x.mp4")));
+            }
             case 6 -> {
+               shot(client, "editor-share.png");
+               ReplayPlayer.start(client, Path.of(FILE));
+            }
+            case 7 -> {
                ReplayPlayer replay = ReplayPlayer.active();
                if (replay == null || client.world == null || client.currentScreen != null) {
                   return;
@@ -59,14 +71,14 @@ final class DevEditorCheck {
                replay.edit.switches.clear();
                net.minecraft.client.network.ClientPlayerEntity p = client.player;
                replay.edit.put(new ReplayEdit.Switch(0L, ReplayPlayer.CameraMode.FIRST_PERSON, 0, 0, 0, 0, 0));
-               replay.edit.put(new ReplayEdit.Switch(3000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX() + 6, p.getY() + 3, p.getZ(), 90.0F, 25.0F));
-               replay.edit.put(new ReplayEdit.Switch(6000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX(), p.getY() + 3, p.getZ() + 6, 180.0F, 25.0F));
+               replay.edit.put(new ReplayEdit.Switch(3000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX() + 6, p.getY() + 3, p.getZ(), 90.0F, 25.0F, 1.0F, 1.0F));
+               replay.edit.put(new ReplayEdit.Switch(6000L, ReplayPlayer.CameraMode.SPECTATOR, p.getX(), p.getY() + 3, p.getZ() + 6, 180.0F, 25.0F, 0.25F, 3.0F));
                replay.edit.put(new ReplayEdit.Switch(8000L, ReplayPlayer.CameraMode.THIRD_PERSON, 0, 0, 0, 0, 0));
                client.setScreen(new ReplayEditorScreen(replay));
             }
-            case 7 -> shot(client, "editor-timeline.png");
-            case 8 -> {
-               ReplayPlayer.active().export("mkv");
+            case 8 -> shot(client, "editor-timeline.png");
+            case 9 -> {
+               ReplayPlayer.active().export("mp4", true);
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR export started");
             }
             default -> {

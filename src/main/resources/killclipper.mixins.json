@@ -6,6 +6,7 @@
   "client": [
     "ClientConnectionMixin",
     "MouseMixin",
+    "GameRendererMixin",
     "WorldRendererMixin",
     "MinecraftClientMixin",
     "SoundEngineMixin"
