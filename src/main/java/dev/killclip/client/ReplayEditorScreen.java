@@ -10,6 +10,14 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.TextureFormat;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.texture.AbstractTexture;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -22,25 +30,29 @@ final class ReplayEditorScreen extends Screen {
    private static final float[] SPEEDS = {0.25F, 0.5F, 1.0F, 1.5F, 2.0F};
    private static final float[] ZOOMS = {1.0F, 1.5F, 2.0F, 3.0F, 4.0F};
    private static final int[] MODE_COLORS = {0xFF3E9E4F, 0xFF3A78C2, 0xFFC7821E};
-   private static final int PANEL = 118;
+   private static final int PANEL = 100;
    private static final int LABELS = 46;
    private static final String[][] KEYS = {
-      {"Space", "Play / pause"},
+      {"P", "Play / pause"},
       {"Left / Right", "Jump 5 s back / forward"},
       {"Click clip track", "Jump to that time"},
       {"Drag yellow ends", "Trim the start and end"},
       {"I / O", "Trim start / end at the playhead"},
       {"Click camera part", "Pick it to change POV, speed, zoom"},
       {"V", "Change the POV of the part"},
-      {"S", "Split: new camera part from here"},
+      {"X", "Split: new camera part from here"},
       {"Delete", "Merge the part into the one before"},
-      {"E", "Hide / show the editor"},
-      {"WASD Space Shift", "Fly the camera (editor hidden, paused)"},
+      {"WASD Space Shift", "Fly the spectator camera (Ctrl faster)"},
+      {"Drag on the video", "Turn the spectator camera"},
+      {"E", "Hide / show the editor (full screen)"},
       {"C", "Save the spectator camera spot to the part"},
       {"H", "Show / hide these keys"}
    };
-   /** Kept between openings, so hiding the keys once keeps them hidden. */
-   private static boolean showKeys = true;
+   /** The keys list (H or the Keys button); off at first so it doesn't cover the video. Kept between openings. */
+   private static boolean showKeys;
+   private static final Identifier PREVIEW_ID = Identifier.of("killclipper", "editor_preview");
+   private static PreviewTexture preview;
+   private boolean turning;
    private final ReplayPlayer replay;
    private String format;
    private ButtonWidget playButton;
@@ -65,24 +77,24 @@ final class ReplayEditorScreen extends Screen {
       int right = this.barRight();
       // Top row: trim buttons on the left, settings of the picked camera part on the right.
       int x = 94;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 4, 26, 18).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 4, 30, 18).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 3, 26, 18).build());
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 3, 30, 18).build());
       this.addDrawableChild(ButtonWidget.builder(Text.literal(this.vertical ? "9:16" : "16:9"), b -> {
          this.vertical = !this.vertical;
          b.setMessage(Text.literal(this.vertical ? "9:16" : "16:9"));
-      }).dimensions(right - 36, top + 4, 36, 18).build());
+      }).dimensions(right - 36, top + 3, 36, 18).build());
       this.zoomButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
          ReplayEdit.Switch part = this.replay.partHere();
          part.zoom = next(ZOOMS, part.zoom());
          this.replay.changedPart(part);
-      }).dimensions(right - 96, top + 4, 58, 18).build());
+      }).dimensions(right - 96, top + 3, 58, 18).build());
       this.speedButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
          ReplayEdit.Switch part = this.replay.partHere();
          part.speed = next(SPEEDS, part.speed());
          this.replay.changedPart(part);
-      }).dimensions(right - 162, top + 4, 64, 18).build());
+      }).dimensions(right - 162, top + 3, 64, 18).build());
       this.cameraHereButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Camera spot"), b -> this.saveCameraSpot())
-         .dimensions(right - 230, top + 4, 66, 18).build());
+         .dimensions(right - 230, top + 3, 66, 18).build());
       // Bottom row.
       int y = this.height - 24;
       x = 8;
@@ -198,11 +210,11 @@ final class ReplayEditorScreen extends Screen {
    }
 
    private int clipTrackTop() {
-      return this.panelTop() + 40;
+      return this.panelTop() + 35;
    }
 
    private int cameraTrackTop() {
-      return this.panelTop() + 60;
+      return this.panelTop() + 53;
    }
 
    private int xOf(long ms) {
@@ -215,10 +227,56 @@ final class ReplayEditorScreen extends Screen {
       return (long)(Math.max(0.0, Math.min(1.0, fraction)) * this.replay.clipLengthMs());
    }
 
+   /** A copy of the game picture, drawn smaller above the timeline like the preview in a video editor. */
+   private static final class PreviewTexture extends AbstractTexture {
+      final int width;
+      final int height;
+
+      PreviewTexture(int width, int height) {
+         this.width = width;
+         this.height = height;
+         this.glTexture = RenderSystem.getDevice().createTexture("Kill Clipper editor preview", GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+            TextureFormat.RGBA8, width, height, 1, 1);
+         this.glTextureView = RenderSystem.getDevice().createTextureView(this.glTexture);
+         this.sampler = RenderSystem.getSamplerCache().get(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.LINEAR, FilterMode.LINEAR, false);
+      }
+   }
+
+   /** Where the game picture goes: the area above the panel, keeping its shape. {x, y, width, height}. */
+   private int[] previewArea() {
+      int areaHeight = this.panelTop() - 4;
+      int areaWidth = this.width - 16;
+      double aspect = (double)this.client.getWindow().getFramebufferWidth() / Math.max(1, this.client.getWindow().getFramebufferHeight());
+      int w = Math.min(areaWidth, (int)(areaHeight * aspect));
+      int h = Math.min(areaHeight, (int)(w / aspect));
+      return new int[]{(this.width - w) / 2, 2, w, h};
+   }
+
    @Override
    public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      // Keep the replay visible: only a dark panel behind the controls.
-      context.fill(0, this.panelTop(), this.width, this.height, 0xC0101010);
+      context.fill(0, 0, this.width, this.height, 0xFF101010);
+      GpuTexture source = this.client.getFramebuffer().getColorAttachment();
+      if (source == null) {
+         return;
+      }
+
+      // The world is already drawn into the game's picture; the editor is drawn over it later, so copy it now.
+      int w = source.getWidth(0);
+      int h = source.getHeight(0);
+      if (preview == null || preview.width != w || preview.height != h) {
+         if (preview != null) {
+            this.client.getTextureManager().destroyTexture(PREVIEW_ID);
+         }
+
+         preview = new PreviewTexture(w, h);
+         this.client.getTextureManager().registerTexture(PREVIEW_ID, preview);
+      }
+
+      RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(source, preview.getGlTexture(), 0, 0, 0, 0, 0, w, h);
+      int[] area = this.previewArea();
+      context.fill(area[0] - 1, area[1] - 1, area[0] + area[2] + 1, area[1] + area[3] + 1, 0xFF333333);
+      // The game picture is stored bottom row first, so flip it.
+      context.drawTexturedQuad(PREVIEW_ID, area[0], area[1], area[0] + area[2], area[1] + area[3], 0.0F, 1.0F, 1.0F, 0.0F);
       context.fill(0, this.panelTop(), this.width, this.panelTop() + 1, 0xFF444444);
    }
 
@@ -244,9 +302,9 @@ final class ReplayEditorScreen extends Screen {
       }
 
       int top = this.panelTop();
-      context.drawTextWithShadow(this.textRenderer, clock(now) + " / " + clock(length), 8, top + 9, 0xFFFFFFFF);
+      context.drawTextWithShadow(this.textRenderer, clock(now) + " / " + clock(length), 8, top + 8, 0xFFFFFFFF);
       // Time ruler.
-      int rulerY = top + 28;
+      int rulerY = top + 24;
       long step = length > 60000L ? 10000L : length > 20000L ? 5000L : 1000L;
       for (long t = 0L; t <= length; t += step) {
          int x = this.xOf(t);
@@ -297,10 +355,6 @@ final class ReplayEditorScreen extends Screen {
       int played = this.xOf(now);
       context.fill(played - 1, rulerY + 4, played + 1, camTop + 17, 0xFFFFFFFF);
       context.fill(played - 3, rulerY + 2, played + 3, rulerY + 5, 0xFFFFFFFF);
-      String hint = picked == null && firstStart > 0L && now < firstStart
-         ? "Click a camera part to pick it. H shows the keys."
-         : "Picked: " + (picked != null ? picked.mode.shortLabel : "recorded") + ". POV, Speed and Zoom change it. H: keys";
-      context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(hint, this.width - 16), 8, camTop + 22, 0xFF999999);
       if (this.replay.exporting()) {
          context.drawCenteredTextWithShadow(this.textRenderer, "Exporting...", this.width / 2, 8, 0xFFFF5555);
       }
@@ -359,10 +413,17 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseClicked(Click click, boolean doubled) {
+      int[] area = this.previewArea();
+      if (click.y() < area[1] + area[3] && click.x() >= area[0] && click.x() <= area[0] + area[2] && this.hoveredElement(click.x(), click.y()).isEmpty()) {
+         // Dragging on the picture turns the spectator camera.
+         this.turning = true;
+         return true;
+      }
+
       if (click.button() == 0 && click.x() >= this.barLeft() - 4 && click.x() <= this.barRight() + 4) {
          double y = click.y();
          int clipTop = this.clipTrackTop();
-         if (y >= this.panelTop() + 26 && y < clipTop + 16) {
+         if (y >= this.panelTop() + 22 && y < clipTop + 16) {
             long[] trim = this.replay.trim();
             if (y >= clipTop - 2 && Math.abs(click.x() - this.xOf(trim[0])) <= 5) {
                this.dragging = 2;
@@ -389,6 +450,12 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseDragged(Click click, double offsetX, double offsetY) {
+      if (this.turning) {
+         double scale = this.client.getWindow().getScaleFactor();
+         this.replay.turnCamera(offsetX * scale, offsetY * scale);
+         return true;
+      }
+
       if (this.dragging != 0) {
          this.dragMs = this.msAt(click.x());
          return true;
@@ -399,6 +466,11 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public boolean mouseReleased(Click click) {
+      if (this.turning) {
+         this.turning = false;
+         return true;
+      }
+
       if (this.dragging == 0) {
          return super.mouseReleased(click);
       }
@@ -426,9 +498,13 @@ final class ReplayEditorScreen extends Screen {
       switch (input.key()) {
          case GLFW.GLFW_KEY_E -> this.close();
          case GLFW.GLFW_KEY_H -> showKeys = !showKeys;
-         case GLFW.GLFW_KEY_SPACE -> this.togglePlay();
+         case GLFW.GLFW_KEY_P -> this.togglePlay();
          case GLFW.GLFW_KEY_V -> this.nextPov();
-         case GLFW.GLFW_KEY_S -> this.split();
+         case GLFW.GLFW_KEY_X -> this.split();
+         // Camera flying keys: the replay reads them itself; don't let them press a focused button.
+         case GLFW.GLFW_KEY_W, GLFW.GLFW_KEY_A, GLFW.GLFW_KEY_S, GLFW.GLFW_KEY_D, GLFW.GLFW_KEY_SPACE, GLFW.GLFW_KEY_LEFT_SHIFT,
+            GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_ENTER -> {
+         }
          case GLFW.GLFW_KEY_DELETE, GLFW.GLFW_KEY_BACKSPACE -> this.merge();
          case GLFW.GLFW_KEY_I -> this.trimStartHere();
          case GLFW.GLFW_KEY_O -> this.trimEndHere();

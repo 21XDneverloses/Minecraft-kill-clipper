@@ -104,6 +104,9 @@ public final class ReplayPlayer {
    private MarkerEntity freeCamera;
    private final boolean[] keysDown = new boolean[GLFW.GLFW_KEY_LAST + 1];
    private int lastSelfId = -1;
+   /** The last applied recording of your own movement: time and {x, y, z, yaw, pitch, headYaw, bodyYaw}. */
+   private long lastSelfTimeMs = -1L;
+   private double[] lastSelfPose;
    private boolean closed;
    private boolean hidingHud;
    private boolean hudWasHidden;
@@ -111,6 +114,8 @@ public final class ReplayPlayer {
    private ReplayEdit.Switch lastSwitch;
    /** Opens the editor bar as soon as the replay has loaded (set when opened from the clip list). */
    boolean openEditorOnLoad;
+   /** You moved or turned the spectator camera yourself, so it stays where you put it until the next camera part. */
+   private boolean manualCamera;
    /** Current zoom (1 = normal field of view). */
    private float zoom = 1.0F;
    /** Export: the clip is played from the start with the camera switches while the recorder captures it. */
@@ -382,6 +387,7 @@ public final class ReplayPlayer {
    void changedPart(ReplayEdit.Switch part) {
       this.edit.save();
       this.lastSwitch = null;
+      this.manualCamera = false;
       if (this.edit.at(this.clipTimeMs()) == part) {
          this.setMode(part.mode);
          this.setSpeed(part.speed());
@@ -484,6 +490,7 @@ public final class ReplayPlayer {
 
       if (current != this.lastSwitch) {
          this.lastSwitch = current;
+         this.manualCamera = false;
          this.mode = current.mode;
          this.applyCamera();
       }
@@ -502,7 +509,7 @@ public final class ReplayPlayer {
       }
 
       this.setZoom(next == null ? current.zoom() : MathHelper.lerp(blend, current.zoom(), next.zoom()));
-      if (current.mode == CameraMode.SPECTATOR && this.freeCamera != null) {
+      if (current.mode == CameraMode.SPECTATOR && this.freeCamera != null && !(this.manualCamera && !this.exporting())) {
          double x = current.x;
          double y = current.y;
          double z = current.z;
@@ -553,6 +560,7 @@ public final class ReplayPlayer {
       long before = this.timeMs;
       this.feedUntil(target);
       this.timeMs = Math.max(this.timeMs, target);
+      this.smoothSelf(this.timeMs);
       if (this.client.world != null) {
          this.client.world.getTickManager().setFrozen(this.paused);
          this.client.world.getTickManager().setTickRate(20.0F * this.speed);
@@ -606,11 +614,70 @@ public final class ReplayPlayer {
             this.deliver(entry.data());
          } else if (entry.kind() == ReplayLog.SELF) {
             this.applySelf(entry.data());
+            this.lastSelfTimeMs = entry.timeMs();
+            this.lastSelfPose = readPose(entry.data());
          }
 
          if (this.closed) {
             return;
          }
+      }
+   }
+
+   /** x, y, z, yaw, pitch, head yaw and body yaw from a recording of your own movement, or null. */
+   private static double[] readPose(byte[] data) {
+      ByteBuf buf = Unpooled.wrappedBuffer(data);
+      try {
+         net.minecraft.network.encoding.VarInts.read(buf);
+         return new double[]{buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat()};
+      } catch (RuntimeException e) {
+         return null;
+      }
+   }
+
+   /**
+    * Your movement was recorded once per game tick, but those ticks never line up exactly with playback ticks, so
+    * playing the records as they come makes your aim stutter (two records in one tick, none in the next). Instead,
+    * place you between the last record and the next one by time, so the aim moves as smoothly as it was played.
+    */
+   private void smoothSelf(long nowMs) {
+      ClientPlayerEntity player = this.client.player;
+      double[] from = this.lastSelfPose;
+      if (player == null || from == null || this.lastSelfTimeMs < 0L) {
+         return;
+      }
+
+      for (int i = this.next; i < this.entries.size() && i < this.next + 2000; i++) {
+         ReplayLog.Entry entry = this.entries.get(i);
+         if (entry.timeMs() - this.lastSelfTimeMs > 500L) {
+            return;
+         }
+
+         if (entry.kind() != ReplayLog.SELF) {
+            continue;
+         }
+
+         double[] to = readPose(entry.data());
+         long span = entry.timeMs() - this.lastSelfTimeMs;
+         if (to == null || span <= 0L) {
+            return;
+         }
+
+         double dx = to[0] - from[0];
+         double dy = to[1] - from[1];
+         double dz = to[2] - from[2];
+         if (dx * dx + dy * dy + dz * dz > 64.0) {
+            // A teleport or respawn: jump, don't glide.
+            return;
+         }
+
+         float f = MathHelper.clamp((float)(nowMs - this.lastSelfTimeMs) / span, 0.0F, 1.0F);
+         player.setPosition(MathHelper.lerp(f, from[0], to[0]), MathHelper.lerp(f, from[1], to[1]), MathHelper.lerp(f, from[2], to[2]));
+         player.setYaw(MathHelper.lerpAngleDegrees(f, (float)from[3], (float)to[3]));
+         player.setPitch(MathHelper.lerp(f, (float)from[4], (float)to[4]));
+         player.setHeadYaw(MathHelper.lerpAngleDegrees(f, (float)from[5], (float)to[5]));
+         player.setBodyYaw(MathHelper.lerpAngleDegrees(f, (float)from[6], (float)to[6]));
+         return;
       }
    }
 
@@ -648,7 +715,8 @@ public final class ReplayPlayer {
             || reason == GameStateChangeS2CPacket.DEMO_MESSAGE_SHOWN;
       }
 
-      return packet instanceof DisconnectS2CPacket
+      return packet instanceof net.minecraft.network.packet.BundleSplitterPacket<?>
+         || packet instanceof DisconnectS2CPacket
          || packet instanceof ServerTransferS2CPacket
          || packet instanceof ResourcePackSendS2CPacket
          || packet instanceof ResourcePackRemoveS2CPacket
@@ -779,8 +847,8 @@ public final class ReplayPlayer {
    /** Spectator camera: WASD to move, Space up, Shift down, Ctrl faster. Mouse looks around. */
    private void moveFreeCamera() {
       MarkerEntity camera = this.freeCamera;
-      boolean switchesDrive = !this.edit.switches.isEmpty() && (!this.paused || this.exporting());
-      if (this.mode != CameraMode.SPECTATOR || camera == null || this.client.currentScreen != null || switchesDrive) {
+      boolean screenAllows = this.client.currentScreen == null || this.client.currentScreen instanceof ReplayEditorScreen;
+      if (this.mode != CameraMode.SPECTATOR || camera == null || !screenAllows || this.exporting()) {
          if (camera != null) {
             camera.resetPosition();
          }
@@ -793,6 +861,11 @@ public final class ReplayPlayer {
       double strafe = (key(this.client.options.leftKey) ? 1 : 0) - (key(this.client.options.rightKey) ? 1 : 0);
       double up = (key(this.client.options.jumpKey) ? 1 : 0) - (key(this.client.options.sneakKey) ? 1 : 0);
       double speed = key(this.client.options.sprintKey) ? 1.2 : 0.5;
+      if (forward == 0 && strafe == 0 && up == 0) {
+         return;
+      }
+
+      this.manualCamera = true;
       double yaw = Math.toRadians(camera.getYaw());
       double dx = (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) * speed;
       double dz = (Math.cos(yaw) * forward + Math.sin(yaw) * strafe) * speed;
@@ -800,13 +873,20 @@ public final class ReplayPlayer {
    }
 
    private boolean key(net.minecraft.client.option.KeyBinding binding) {
-      return binding.isPressed();
+      if (this.client.currentScreen == null) {
+         return binding.isPressed();
+      }
+
+      // Key bindings don't update while a screen is open, so read the bound key itself (editor open).
+      InputUtil.Key bound = InputUtil.fromTranslationKey(binding.getBoundKeyTranslationKey());
+      return bound.getCategory() == InputUtil.Type.KEYSYM && bound.getCode() >= 0 && InputUtil.isKeyPressed(this.client.getWindow(), bound.getCode());
    }
 
    /** Turns the spectator camera with the mouse; returns false when the mouse should do nothing. */
    public boolean turnCamera(double dx, double dy) {
-      if (this.mode == CameraMode.SPECTATOR && this.freeCamera != null) {
+      if (this.mode == CameraMode.SPECTATOR && this.freeCamera != null && !this.exporting() && (dx != 0.0 || dy != 0.0)) {
          this.freeCamera.changeLookDirection(dx, dy);
+         this.manualCamera = true;
       }
 
       return false;

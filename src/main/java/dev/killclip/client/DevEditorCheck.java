@@ -69,6 +69,7 @@ final class DevEditorCheck {
                   return;
                }
 
+               shot(client, "editor-open.png");
                replay.edit.switches.clear();
                net.minecraft.client.network.ClientPlayerEntity p = client.player;
                replay.edit.put(new ReplayEdit.Switch(0L, ReplayPlayer.CameraMode.FIRST_PERSON, 0, 0, 0, 0, 0));

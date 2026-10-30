@@ -2,6 +2,7 @@ package dev.killclip.client;
 
 import dev.killclip.core.ReplayLog;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.buffer.Unpooled;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -103,13 +104,38 @@ public final class ReplayCapture {
       }
    }
 
-   /** Called on the network thread for every packet, before it is handled. */
+   /**
+    * Called on the network thread with each packet's bytes just before the game decodes them. Copying the bytes
+    * is far cheaper than writing every packet out again, which slowed down joining servers (thousands of chunks).
+    */
+   public static void onRawPacket(ChannelHandlerContext context, ByteBuf buf) {
+      ReplayLog target;
+      NetworkState<?> current;
+      synchronized (LOCK) {
+         if (log == null || connection == null || context.pipeline().get("packet_handler") != connection) {
+            return;
+         }
+
+         target = log;
+         current = state;
+      }
+
+      if (current == null || current.id() != NetworkPhase.PLAY && current.id() != NetworkPhase.CONFIGURATION) {
+         return;
+      }
+
+      byte[] data = new byte[buf.readableBytes()];
+      buf.getBytes(buf.readerIndex(), data);
+      target.append(nowMs(), ReplayLog.PACKET, data);
+   }
+
+   /** Called on the network thread for every packet, before it is handled. Only singleplayer needs this path. */
    @SuppressWarnings({"unchecked", "rawtypes"})
    public static void onPacket(ClientConnection conn, Packet<?> packet) {
       ReplayLog target;
       NetworkState<?> current;
       synchronized (LOCK) {
-         if (conn != connection || log == null) {
+         if (conn != connection || log == null || !conn.isLocal()) {
             return;
          }
 
