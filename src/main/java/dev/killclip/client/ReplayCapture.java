@@ -44,6 +44,8 @@ public final class ReplayCapture {
    /** Logs of earlier connections or servers, kept a while so a clip that started there still gets its replay. */
    private static final java.util.ArrayDeque<ReplayLog> retired = new java.util.ArrayDeque<>();
    private static final long RETIRED_KEEP_MS = 180000L;
+   /** A kill seen this soon after joining a server was announced on arrival, not fought there. */
+   private static final long JUST_JOINED_MS = 5000L;
    /** Connections created by replay playback, which must never be recorded. */
    private static ClientConnection ignored;
    private static final ItemStack[] lastGear = new ItemStack[SLOTS.length];
@@ -269,32 +271,35 @@ public final class ReplayCapture {
    }
 
    /**
-    * Claims the log that holds a clip starting at {@code fromMs}, so a server switch or disconnect before the
-    * video is saved can't swap or close it. Null when nothing was recorded.
+    * Claims the log of the server the fight happened on, so a server switch or disconnect before the video is
+    * saved can't swap or close it. {@code killMs} is when the kill was seen: the log running then is the fight's,
+    * not the one covering the clip's start (a short duel starts after the pre-roll, which still shows the lobby).
+    * A kill seen just after joining a server was announced on arrival (a win sends you to the lobby first), so the
+    * server before it is used. Null when nothing was recorded.
     */
-   static ReplayLog.Hold hold(long fromMs) {
+   static ReplayLog.Hold hold(long killMs) {
       synchronized (LOCK) {
-         ReplayLog best = log;
-         if (best == null || best.startMs() > fromMs) {
-            // The clip started before the current log: use the newest earlier log that covers its start.
-            for (java.util.Iterator<ReplayLog> it = retired.descendingIterator(); it.hasNext(); ) {
-               ReplayLog old = it.next();
-               if (old.startMs() <= fromMs) {
-                  best = old;
-                  break;
-               }
+         java.util.List<ReplayLog> logs = new java.util.ArrayList<>(retired);
+         if (log != null) {
+            logs.add(log);
+         }
 
-               best = best == null ? old : best;
+         long[] starts = logs.stream().mapToLong(ReplayLog::startMs).toArray();
+         int pick = ReplayLog.fightLog(starts, killMs, JUST_JOINED_MS);
+         for (int i = pick; i >= 0; i--) {
+            ReplayLog.Hold hold = logs.get(i).hold();
+            if (hold != null) {
+               return hold;
             }
          }
 
-         return best == null ? null : best.hold();
+         return null;
       }
    }
 
    /** Saves the replay for a clip next to its video. */
    static CompletableFuture<Path> save(long fromMs, long toMs, Path output) {
-      ReplayLog.Hold hold = hold(fromMs);
+      ReplayLog.Hold hold = hold(toMs);
       if (hold == null) {
          return CompletableFuture.failedFuture(new IllegalStateException("no server connection was recorded"));
       }

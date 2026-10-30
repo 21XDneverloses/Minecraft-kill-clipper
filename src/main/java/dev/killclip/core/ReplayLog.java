@@ -143,6 +143,21 @@ public final class ReplayLog implements AutoCloseable {
       return System.nanoTime() / 1000000L - this.startMs;
    }
 
+   /**
+    * Picks which of a run of logs (start times, oldest first) holds a fight whose kill was seen at {@code killMs}:
+    * the one running then, or the one before it when the kill came within {@code justJoinedMs} of joining (the
+    * kill was announced on arrival in the lobby). -1 when there are no logs.
+    */
+   public static int fightLog(long[] starts, long killMs, long justJoinedMs) {
+      for (int i = starts.length - 1; i >= 0; i--) {
+         if (starts[i] <= killMs) {
+            return i > 0 && killMs - starts[i] < justJoinedMs ? i - 1 : i;
+         }
+      }
+
+      return starts.length == 0 ? -1 : 0;
+   }
+
    /** Keeps the log open for one clip save, or returns null when it is already closed. */
    public synchronized Hold hold() {
       if (this.closed || this.closeWanted && this.holds == 0) {

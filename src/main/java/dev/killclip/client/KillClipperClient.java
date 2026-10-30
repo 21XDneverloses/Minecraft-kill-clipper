@@ -447,16 +447,16 @@ public final class KillClipperClient implements ClientModInitializer {
       long to = streak.lastKillMs() + this.config.postRollMs;
       // Clips are at most 2 minutes; a longer streak keeps its end.
       long from = Math.max(streak.firstKillMs() - this.config.preRollMs, to - MAX_CLIP_MS);
-      this.saveClip(from, to, label, title, false);
+      this.saveClip(from, to, streak.lastKillMs(), label, title, false);
    }
 
-   private void saveClip(long fromMs, long toMs, String label, String title, boolean manual) {
+   private void saveClip(long fromMs, long toMs, long killMs, String label, String title, boolean manual) {
       if (manual || this.config.feedback) {
          notify("● Saving " + title.toLowerCase() + " clip...", Formatting.AQUA);
       }
 
       // Claim the fight's replay log now: by the time the video is saved, a win may have moved you to the lobby.
-      dev.killclip.core.ReplayLog.Hold replay = this.config.saveReplays ? ReplayCapture.hold(fromMs) : null;
+      dev.killclip.core.ReplayLog.Hold replay = this.config.saveReplays ? ReplayCapture.hold(killMs) : null;
       this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), this.config.fileFormat, file -> {
          this.clipsSaved++;
          if (manual || this.config.feedback) {
@@ -687,7 +687,7 @@ public final class KillClipperClient implements ClientModInitializer {
    /** Saves the last 10 seconds right now. */
    public void testClip() {
       long now = nowMs();
-      this.saveClip(now - 10000L, now, "test", "Test", true);
+      this.saveClip(now - 10000L, now, now, "test", "Test", true);
    }
 
    public void openClipsFolder() {

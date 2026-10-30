@@ -31,6 +31,14 @@ public class ReplayLogTest {
 
       check(count == 2000, "read " + count + " records");
       check(!Files.exists(dir.resolve("session.bin")), "session file removed");
+      // Which session log a fight's replay comes from: lobby (0), duel server (10000), lobby again after the win (40000).
+      long[] starts = {0L, 10000L, 40000L};
+      check(ReplayLog.fightLog(starts, 25000L, 5000L) == 1, "kill on the duel server");
+      check(ReplayLog.fightLog(starts, 39900L, 5000L) == 1, "kill just before the win transfer");
+      check(ReplayLog.fightLog(starts, 42000L, 5000L) == 1, "win announced on arrival in the lobby");
+      check(ReplayLog.fightLog(starts, 60000L, 5000L) == 2, "kill later in the lobby");
+      check(ReplayLog.fightLog(new long[]{5000L}, 1000L, 5000L) == 0, "only log");
+      check(ReplayLog.fightLog(new long[0], 1000L, 5000L) == -1, "no logs");
       System.out.println("ReplayLogTest passed (" + count + " records, " + Files.size(out) + " bytes)");
    }
 
