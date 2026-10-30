@@ -171,6 +171,43 @@ public final class ReplayCapture {
       }
    }
 
+   private static float lastLookYaw = Float.NaN;
+   private static float lastLookPitch = Float.NaN;
+
+   /**
+    * Records where you look on every rendered frame. Ticks are only 20 a second, far too few for PvP aim: played
+    * back from ticks alone, flicks and tracking look jittery.
+    */
+   static void recordLook(MinecraftClient client) {
+      ReplayLog target;
+      synchronized (LOCK) {
+         target = log;
+      }
+
+      ClientPlayerEntity player = client.player;
+      if (target == null || player == null || client.world == null || state == null || state.id() != NetworkPhase.PLAY) {
+         return;
+      }
+
+      float yaw = player.getYaw();
+      float pitch = player.getPitch();
+      if (yaw == lastLookYaw && pitch == lastLookPitch) {
+         return;
+      }
+
+      lastLookYaw = yaw;
+      lastLookPitch = pitch;
+      byte[] data = new byte[8];
+      int y = Float.floatToIntBits(yaw);
+      int p = Float.floatToIntBits(pitch);
+      for (int i = 0; i < 4; i++) {
+         data[i] = (byte)(y >>> 24 - i * 8);
+         data[4 + i] = (byte)(p >>> 24 - i * 8);
+      }
+
+      target.append(nowMs(), ReplayLog.LOOK, data);
+   }
+
    /** Records the player's own state; call once per client tick. */
    static void recordSelf(MinecraftClient client) {
       ReplayLog target;

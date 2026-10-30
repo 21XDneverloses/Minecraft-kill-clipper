@@ -42,6 +42,8 @@ public final class ReplayLog implements AutoCloseable {
    public static final byte PACKET = 1;
    /** Data is the player's own state for one tick; the server never sends it to you. */
    public static final byte SELF = 2;
+   /** Data is where you were looking (yaw and pitch floats) on one rendered frame, so aim plays back as smoothly as it was played. */
+   public static final byte LOOK = 3;
    private static final long MAX_PENDING_BYTES = 256L << 20;
    private static final Record STOP = new Record(0, (byte)-1, new byte[0]);
 

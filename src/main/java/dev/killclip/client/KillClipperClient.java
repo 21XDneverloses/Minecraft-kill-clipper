@@ -80,6 +80,7 @@ public final class KillClipperClient implements ClientModInitializer {
    /** A player hit this recently counts as killed if the match ends and you are sent away while alive. */
    private static final long MATCH_END_HIT_MS = 5000L;
    private static final double EXPLOSION_RANGE = 12.0;
+   private static final boolean DEV_SPIN = Boolean.getBoolean("killclip.devSpin");
    private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
    private final long launchMs = nowMs();
    private boolean selfTestDone;
@@ -246,6 +247,14 @@ public final class KillClipperClient implements ClientModInitializer {
    /** Called by the render mixin after every frame. */
    public void onFrameRendered(MinecraftClient client) {
       this.recorder.onFrameRendered(client, this.config, nowMs());
+      if (!ReplayPlayer.playing()) {
+         if (DEV_SPIN && client.player != null) {
+            // Dev check: wiggle the aim like PvP tracking so per-frame aim recording can be checked.
+            client.player.setYaw((float)(40.0 * Math.sin(System.nanoTime() / 1.0E9 * 2.0 * Math.PI * 2.0)));
+         }
+
+         ReplayCapture.recordLook(client);
+      }
    }
 
    private void onServerMessage(Text message) {
@@ -642,6 +651,7 @@ public final class KillClipperClient implements ClientModInitializer {
       this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
          file -> {
             notify("✓ Edited clip saved: " + file, Formatting.GREEN);
+            ReplayPlayer.exportedFile = this.config.clipsDir().resolve(file);
             status.accept("Saved " + file + " in your clips folder.");
             if (vertical) {
                this.makeVertical(this.config.clipsDir().resolve(file));

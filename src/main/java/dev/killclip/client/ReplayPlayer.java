@@ -108,6 +108,10 @@ public final class ReplayPlayer {
    private MarkerEntity freeCamera;
    private final boolean[] keysDown = new boolean[GLFW.GLFW_KEY_LAST + 1];
    private int lastSelfId = -1;
+   /** Your aim on every recorded frame (replays from v1.9.1 on), by time. */
+   private final long[] lookTimes;
+   private final float[] lookYaw;
+   private final float[] lookPitch;
    /** The last applied recording of your own movement: time and {x, y, z, yaw, pitch, headYaw, bodyYaw}. */
    private long lastSelfTimeMs = -1L;
    private double[] lastSelfPose;
@@ -139,6 +143,26 @@ public final class ReplayPlayer {
       this.client = client;
       this.file = file;
       this.entries = entries;
+      int looks = 0;
+      for (ReplayLog.Entry entry : entries) {
+         if (entry.kind() == ReplayLog.LOOK && entry.data().length == 8) {
+            looks++;
+         }
+      }
+
+      this.lookTimes = new long[looks];
+      this.lookYaw = new float[looks];
+      this.lookPitch = new float[looks];
+      int n = 0;
+      for (ReplayLog.Entry entry : entries) {
+         if (entry.kind() == ReplayLog.LOOK && entry.data().length == 8) {
+            ByteBuf buf = Unpooled.wrappedBuffer(entry.data());
+            this.lookTimes[n] = entry.timeMs();
+            this.lookYaw[n] = buf.readFloat();
+            this.lookPitch[n] = buf.readFloat();
+            n++;
+         }
+      }
       this.clipStartMs = parse(header.get("clipStartMs"), 0L);
       this.clipEndMs = parse(header.get("clipEndMs"), entries.isEmpty() ? 0L : entries.getLast().timeMs());
       this.edit = ReplayEdit.load(file);
@@ -476,6 +500,8 @@ public final class ReplayPlayer {
 
    /** What happened to the last export, shown in the editor. */
    static volatile String exportStatus = "";
+   /** The last exported file, for sharing it from the editor. */
+   static volatile Path exportedFile;
 
    private void finishExport(boolean saved) {
       String format = this.exportFormat;
@@ -738,6 +764,55 @@ public final class ReplayPlayer {
    private net.minecraft.entity.LivingEntity shown() {
       return this.stand != null ? this.stand : this.client.player;
    }
+
+   /**
+    * Called at the start of every rendered frame: points your view exactly where you were looking at this moment
+    * of the fight, from the per-frame aim recording, so first person is as smooth as you played it.
+    */
+   public void onFrame(float tickProgress) {
+      ClientPlayerEntity player = this.client.player;
+      if (this.lookTimes.length < 2 || player == null || this.client.world == null || this.closed) {
+         return;
+      }
+
+      double t = this.paused ? this.timeMs : this.timeMs - 50.0 + MathHelper.clamp(tickProgress, 0.0F, 1.0F) * 50.0;
+      int lo = 0;
+      int hi = this.lookTimes.length - 1;
+      if (t < this.lookTimes[0] || t - this.lookTimes[hi] > 250.0) {
+         return;
+      }
+
+      while (hi - lo > 1) {
+         int mid = (lo + hi) >>> 1;
+         if (this.lookTimes[mid] <= t) {
+            lo = mid;
+         } else {
+            hi = mid;
+         }
+      }
+
+      float yaw = this.lookYaw[lo];
+      float pitch = this.lookPitch[lo];
+      long gap = this.lookTimes[hi] - this.lookTimes[lo];
+      if (hi != lo && gap > 0L && gap <= 250L && t > this.lookTimes[lo]) {
+         float f = MathHelper.clamp((float)((t - this.lookTimes[lo]) / gap), 0.0F, 1.0F);
+         yaw = this.lookYaw[lo] + f * (this.lookYaw[hi] - this.lookYaw[lo]);
+         pitch = MathHelper.lerp(f, this.lookPitch[lo], this.lookPitch[hi]);
+      }
+
+      player.setYaw(yaw);
+      player.setPitch(pitch);
+      player.lastYaw = yaw;
+      player.lastPitch = pitch;
+      player.setHeadYaw(yaw);
+      player.lastHeadYaw = yaw;
+      if (DEV_LOOK_LOG && this.devLookFrames++ < 400) {
+         KillClipperClient.LOGGER.info("KILLCLIP_LOOK t={} yaw={}", t, yaw);
+      }
+   }
+
+   private static final boolean DEV_LOOK_LOG = Boolean.getBoolean("killclip.devLookLog");
+   private int devLookFrames;
 
    /** A Catmull-Rom curve: passes through b at 0 and c at 1, shaped by a and d on either side. */
    private static double catmullRom(float t, double a, double b, double c, double d) {

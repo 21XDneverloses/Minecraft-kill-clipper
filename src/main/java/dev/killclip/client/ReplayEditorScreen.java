@@ -62,6 +62,7 @@ final class ReplayEditorScreen extends Screen {
    private ButtonWidget zoomButton;
    private ButtonWidget cameraHereButton;
    private ButtonWidget splitButton;
+   private ButtonWidget linkButton;
    private boolean vertical;
    /** What the mouse is dragging: 0 nothing, 1 the playhead, 2 the trim start, 3 the trim end, 4 a camera part. */
    private int dragging;
@@ -118,6 +119,13 @@ final class ReplayEditorScreen extends Screen {
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 34, 20).build());
       x += 36;
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
+      this.linkButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Get link"), b -> {
+         java.nio.file.Path file = ReplayPlayer.exportedFile;
+         if (file != null) {
+            this.client.setScreen(new ShareScreen(this, file));
+         }
+      }).dimensions(0, 0, 56, 14).build());
+      this.linkButton.visible = false;
       this.refreshLabels();
    }
 
@@ -381,7 +389,15 @@ final class ReplayEditorScreen extends Screen {
          int[] box = this.statusBox(status);
          context.fill(box[0], box[1], box[2], box[3], 0xD0000000);
          int color = status.startsWith("Export failed") ? 0xFFFF6666 : status.startsWith("Saved") ? 0xFF66FF66 : 0xFFFFDD55;
-         context.drawCenteredTextWithShadow(this.textRenderer, status, this.width / 2, box[1] + 3, color);
+         context.drawCenteredTextWithShadow(this.textRenderer, status, (box[0] + box[2]) / 2, box[1] + 3, color);
+      }
+
+      boolean saved = ReplayPlayer.exportStatus.startsWith("Saved") && ReplayPlayer.exportedFile != null;
+      this.linkButton.visible = saved;
+      if (saved) {
+         int[] box = this.statusBox(status);
+         this.linkButton.setX(Math.min(this.width - 60, box[2] + 4));
+         this.linkButton.setY(box[1]);
       }
    }
 
@@ -431,17 +447,18 @@ final class ReplayEditorScreen extends Screen {
    private String statusText() {
       String status = ReplayPlayer.exportStatus;
       if (status.startsWith("Saved")) {
-         status = status + " Click to open it.";
+         status = status + " Click to open the folder.";
       }
 
-      return this.textRenderer.trimToWidth(status, this.width - 20);
+      return this.textRenderer.trimToWidth(status, this.width - 90);
    }
 
    /** The export message box above the timeline: {x1, y1, x2, y2}. */
    private int[] statusBox(String status) {
       int w = this.textRenderer.getWidth(status) + 10;
       int y = this.panelTop() - 16;
-      return new int[]{this.width / 2 - w / 2, y, this.width / 2 + w / 2, y + 14};
+      int center = this.width / 2 - 30;
+      return new int[]{center - w / 2, y, center + w / 2, y + 14};
    }
 
    private static String clock(long ms) {
