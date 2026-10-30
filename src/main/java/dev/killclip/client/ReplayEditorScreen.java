@@ -41,11 +41,12 @@ final class ReplayEditorScreen extends Screen {
       {"Click camera part", "Pick it to change POV, speed, zoom"},
       {"V", "Change the POV of the part"},
       {"X", "Split: new camera part from here"},
+      {"K", "Spectator keyframe at the camera's spot"},
       {"Delete", "Merge the part into the one before"},
       {"WASD Space Shift", "Fly the spectator camera (Ctrl faster)"},
       {"Drag on the video", "Turn the spectator camera"},
       {"E", "Hide / show the editor (full screen)"},
-      {"C", "Save the spectator camera spot to the part"},
+      {"C", "Move the keyframe here to the camera's spot"},
       {"H", "Show / hide these keys"}
    };
    /** The keys list (H or the Keys button); off at first so it doesn't cover the video. Kept between openings. */
@@ -60,6 +61,7 @@ final class ReplayEditorScreen extends Screen {
    private ButtonWidget speedButton;
    private ButtonWidget zoomButton;
    private ButtonWidget cameraHereButton;
+   private ButtonWidget splitButton;
    private boolean vertical;
    /** What the mouse is dragging: 0 nothing, 1 the playhead, 2 the trim start, 3 the trim end, 4 a camera part. */
    private int dragging;
@@ -93,7 +95,7 @@ final class ReplayEditorScreen extends Screen {
          part.speed = next(SPEEDS, part.speed());
          this.replay.changedPart(part);
       }).dimensions(right - 162, top + 3, 64, 18).build());
-      this.cameraHereButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Camera spot"), b -> this.saveCameraSpot())
+      this.cameraHereButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Set spot"), b -> this.saveCameraSpot())
          .dimensions(right - 230, top + 3, 66, 18).build());
       // Bottom row.
       int y = this.height - 24;
@@ -102,7 +104,7 @@ final class ReplayEditorScreen extends Screen {
       x += 42;
       this.povButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.nextPov()).dimensions(x, y, 84, 20).build());
       x += 86;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
+      this.splitButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
       x += 42;
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 42, 20).build());
       x += 44;
@@ -147,6 +149,8 @@ final class ReplayEditorScreen extends Screen {
       this.speedButton.setMessage(Text.literal("Speed " + trim(part != null ? part.speed() : 1.0F) + "x"));
       this.zoomButton.setMessage(Text.literal("Zoom " + trim(part != null ? part.zoom() : 1.0F) + "x"));
       this.cameraHereButton.visible = mode == ReplayPlayer.CameraMode.SPECTATOR;
+      // In spectator a split is a camera keyframe: the camera glides through every keyframe's spot.
+      this.splitButton.setMessage(Text.literal(mode == ReplayPlayer.CameraMode.SPECTATOR ? "+Key" : "Split"));
    }
 
    private void togglePlay() {
@@ -168,6 +172,10 @@ final class ReplayEditorScreen extends Screen {
 
    private void split() {
       this.replay.addSwitchHere();
+   }
+
+   private void keyframe() {
+      this.replay.addKeyframeHere();
    }
 
    private void merge() {
@@ -349,6 +357,11 @@ final class ReplayEditorScreen extends Screen {
          }
 
          this.drawPart(context, this.xOf(part.timeMs), this.xOf(end), camTop, MODE_COLORS[part.mode.ordinal()], label, part == picked);
+         if (part.mode == ReplayPlayer.CameraMode.SPECTATOR) {
+            // Keyframe marker.
+            int kx = this.xOf(part.timeMs);
+            context.fill(kx - 2, camTop - 4, kx + 3, camTop + 1, 0xFFFFFFFF);
+         }
       }
 
       // Playhead across the ruler and both tracks.
@@ -361,6 +374,14 @@ final class ReplayEditorScreen extends Screen {
 
       if (showKeys) {
          this.drawKeys(context);
+      }
+
+      String status = this.statusText();
+      if (!status.isEmpty()) {
+         int[] box = this.statusBox(status);
+         context.fill(box[0], box[1], box[2], box[3], 0xD0000000);
+         int color = status.startsWith("Export failed") ? 0xFFFF6666 : status.startsWith("Saved") ? 0xFF66FF66 : 0xFFFFDD55;
+         context.drawCenteredTextWithShadow(this.textRenderer, status, this.width / 2, box[1] + 3, color);
       }
    }
 
@@ -407,12 +428,37 @@ final class ReplayEditorScreen extends Screen {
       context.getMatrices().popMatrix();
    }
 
+   private String statusText() {
+      String status = ReplayPlayer.exportStatus;
+      if (status.startsWith("Saved")) {
+         status = status + " Click to open it.";
+      }
+
+      return this.textRenderer.trimToWidth(status, this.width - 20);
+   }
+
+   /** The export message box above the timeline: {x1, y1, x2, y2}. */
+   private int[] statusBox(String status) {
+      int w = this.textRenderer.getWidth(status) + 10;
+      int y = this.panelTop() - 16;
+      return new int[]{this.width / 2 - w / 2, y, this.width / 2 + w / 2, y + 14};
+   }
+
    private static String clock(long ms) {
       return String.format(Locale.ROOT, "%d:%04.1f", ms / 60000L, (ms % 60000L) / 1000.0);
    }
 
    @Override
    public boolean mouseClicked(Click click, boolean doubled) {
+      String status = this.statusText();
+      if (ReplayPlayer.exportStatus.startsWith("Saved")) {
+         int[] box = this.statusBox(status);
+         if (click.x() >= box[0] && click.x() <= box[2] && click.y() >= box[1] && click.y() <= box[3]) {
+            KillClipperClient.instance().openClipsFolder();
+            return true;
+         }
+      }
+
       int[] area = this.previewArea();
       if (click.y() < area[1] + area[3] && click.x() >= area[0] && click.x() <= area[0] + area[2] && this.hoveredElement(click.x(), click.y()).isEmpty()) {
          // Dragging on the picture turns the spectator camera.
@@ -501,6 +547,7 @@ final class ReplayEditorScreen extends Screen {
          case GLFW.GLFW_KEY_P -> this.togglePlay();
          case GLFW.GLFW_KEY_V -> this.nextPov();
          case GLFW.GLFW_KEY_X -> this.split();
+         case GLFW.GLFW_KEY_K -> this.keyframe();
          // Camera flying keys: the replay reads them itself; don't let them press a focused button.
          case GLFW.GLFW_KEY_W, GLFW.GLFW_KEY_A, GLFW.GLFW_KEY_S, GLFW.GLFW_KEY_D, GLFW.GLFW_KEY_SPACE, GLFW.GLFW_KEY_LEFT_SHIFT,
             GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_ENTER -> {

@@ -168,6 +168,11 @@ final class ReplayEdit {
       return new long[]{start, end};
    }
 
+   Switch before(Switch current) {
+      int index = this.switches.indexOf(current);
+      return index > 0 ? this.switches.get(index - 1) : null;
+   }
+
    Switch after(Switch current) {
       int index = this.switches.indexOf(current);
       return index >= 0 && index + 1 < this.switches.size() ? this.switches.get(index + 1) : null;

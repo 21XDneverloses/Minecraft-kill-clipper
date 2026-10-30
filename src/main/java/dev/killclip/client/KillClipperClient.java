@@ -543,11 +543,14 @@ public final class KillClipperClient implements ClientModInitializer {
          this.devReplayStartMs = nowMs();
       } else if (this.devReplayStep >= 2 && this.devReplayStep <= 7 && ReplayPlayer.active() != null) {
          long since = nowMs() - this.devReplayStartMs;
-         if (since >= (this.devReplayStep - 1) * 2000L) {
+         if (since >= (this.devReplayStep - 1) * 900L) {
             ReplayPlayer.CameraMode mode = ReplayPlayer.CameraMode.values()[(this.devReplayStep - 2) / 2];
             if (this.devReplayStep % 2 == 0) {
                ReplayPlayer.active().setMode(mode);
             } else {
+               net.minecraft.entity.Entity cam = client.getCameraEntity();
+               LOGGER.info("KILLCLIP_DEVREPLAY {} camera={} at {} player at {} hud hidden {} perspective {}", mode, cam == null ? null : cam.getClass().getSimpleName(),
+                  cam == null ? null : cam.getEntityPos(), client.player == null ? null : client.player.getEntityPos(), client.options.hudHidden, client.options.getPerspective());
                net.minecraft.client.util.ScreenshotRecorder.saveScreenshot(client.runDirectory, "replay-" + mode.name().toLowerCase() + ".png", client.getFramebuffer(), 1,
                   text -> LOGGER.info("KILLCLIP_DEVREPLAY {}: {}", mode, text.getString()));
             }
@@ -617,23 +620,37 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    /** Saves an exported replay edit: the recorder captured it while it played. */
-   void exportEdit(long fromMs, long toMs, Path replay, String format, boolean vertical) {
+   void exportEdit(long fromMs, long toMs, Path replay, String format, boolean vertical, java.util.function.Consumer<String> status) {
       long length = toMs - fromMs;
       if (length > this.config.effectiveBufferSeconds() * 1000L) {
-         notify("✗ Export is " + length / 1000L + " s but the buffer only keeps " + this.config.effectiveBufferSeconds() + " s. Raise Buffer in the settings.", Formatting.RED);
+         String message = "Export failed: it is " + length / 1000L + " s but the buffer only keeps " + this.config.effectiveBufferSeconds() + " s. Raise Buffer in the settings.";
+         notify("✗ " + message, Formatting.RED);
+         status.accept(message);
+         return;
+      }
+
+      if (!this.recorder.running()) {
+         String message = "Export failed: recording is off or FFmpeg isn't running (see /killclip status).";
+         notify("✗ " + message, Formatting.RED);
+         status.accept(message);
          return;
       }
 
       String name = replay.getFileName().toString().replace(".kcreplay", "");
-      // No "saving" message here: it would end up in the last frames of the export.
+      status.accept("Saving the export...");
+      // No "saving" message on screen here: it would end up in the last frames of the export.
       this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
          file -> {
             notify("✓ Edited clip saved: " + file, Formatting.GREEN);
+            status.accept("Saved " + file + " in your clips folder.");
             if (vertical) {
                this.makeVertical(this.config.clipsDir().resolve(file));
             }
          },
-         error -> notify("✗ Export failed: " + error, Formatting.RED));
+         error -> {
+            notify("✗ Export failed: " + error, Formatting.RED);
+            status.accept("Export failed: " + error);
+         });
    }
 
    /** Saves a 9:16 copy of a clip next to it (name_vertical.mp4). */

@@ -8,7 +8,6 @@
     "DecoderHandlerMixin",
     "MouseMixin",
     "GameRendererMixin",
-    "WorldRendererMixin",
     "MinecraftClientMixin",
     "SoundEngineMixin"
   ],

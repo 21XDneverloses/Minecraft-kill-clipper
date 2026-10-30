@@ -85,6 +85,14 @@ final class DevEditorCheck {
                ReplayPlayer.active().export("mp4", true);
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR export started");
             }
+            case 10 -> {
+               if (!ReplayPlayer.exportStatus.startsWith("Saved") && !ReplayPlayer.exportStatus.startsWith("Export failed")) {
+                  return;
+               }
+
+               KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR status: {}", ReplayPlayer.exportStatus);
+               shot(client, "editor-saved.png");
+            }
             default -> {
                return;
             }

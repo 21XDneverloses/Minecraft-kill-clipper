@@ -24,6 +24,10 @@ import net.minecraft.client.network.ClientConfigurationNetworkHandler;
 import net.minecraft.client.network.ClientConnectionState;
 import net.minecraft.client.network.ClientDynamicRegistryType;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.network.OtherClientPlayerEntity;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.client.option.Perspective;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.world.ClientChunkLoadProgress;
@@ -116,6 +120,13 @@ public final class ReplayPlayer {
    boolean openEditorOnLoad;
    /** You moved or turned the spectator camera yourself, so it stays where you put it until the next camera part. */
    private boolean manualCamera;
+   /**
+    * A copy of you that the other cameras film. Your real player is only drawn in first person (vanilla hides it
+    * from any other camera, and mods like Sodium do too), and it doesn't animate when moved by the replay, so third
+    * person and spectator show this stand-in instead: it walks, swings, crouches and wears your gear like any player.
+    */
+   private OtherClientPlayerEntity stand;
+   private static final int STAND_ID = -0x4B43;
    /** Current zoom (1 = normal field of view). */
    private float zoom = 1.0F;
    /** Export: the clip is played from the start with the camera switches while the recorder captures it. */
@@ -442,11 +453,12 @@ public final class ReplayPlayer {
       long playMs = this.exportPlayMs();
       int buffer = KillClipperClient.instance().settings().effectiveBufferSeconds();
       if (playMs > buffer * 1000L) {
-         this.client.inGameHud.setOverlayMessage(Text.literal("Export plays " + playMs / 1000L + " s but the buffer keeps " + buffer
-            + " s. Trim it shorter, use less slow-mo, or raise Buffer in the settings."), false);
+         exportStatus = "Export failed: it plays " + playMs / 1000L + " s but the buffer keeps " + buffer
+            + " s. Trim it shorter, use less slow-mo, or raise Buffer in the settings.";
          return;
       }
 
+      exportStatus = "";
       this.exportFormat = format;
       this.exportVertical = vertical;
       this.exportStartRealMs = 0L;
@@ -462,6 +474,9 @@ public final class ReplayPlayer {
       }
    }
 
+   /** What happened to the last export, shown in the editor. */
+   static volatile String exportStatus = "";
+
    private void finishExport(boolean saved) {
       String format = this.exportFormat;
       long start = this.exportStartRealMs;
@@ -473,13 +488,17 @@ public final class ReplayPlayer {
 
       if (saved && format != null && start > 0L) {
          // Stop just before the "saving" message shows up on screen.
-         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L - 100L, this.file, format, this.exportVertical);
+         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L - 100L, this.file, format, this.exportVertical,
+            message -> this.client.execute(() -> exportStatus = message));
+         // Back to the editor, which shows when the file is saved.
+         this.client.setScreen(new ReplayEditorScreen(this));
       }
    }
 
    /** Follows the camera switches while playing; a paused replay leaves the camera to you. */
    private void followSwitches() {
-      if (this.edit.switches.isEmpty() || this.paused && !this.exporting()) {
+      // Paused, the camera still sits on its path (so keyframes show where they are) until you fly it yourself.
+      if (this.edit.switches.isEmpty() || this.paused && !this.exporting() && this.manualCamera) {
          return;
       }
 
@@ -516,13 +535,26 @@ public final class ReplayPlayer {
          float yaw = current.yaw;
          float pitch = current.pitch;
          if (next != null && next.mode == CameraMode.SPECTATOR && next.timeMs > current.timeMs) {
+            // Spectator parts in a row are keyframes of one camera path: a smooth curve through every spot (like
+            // Replay Mod), easing in at the first keyframe and out at the last instead of stopping at each one.
+            ReplayEdit.Switch before = this.edit.before(current);
+            ReplayEdit.Switch after = this.edit.after(next);
+            boolean first = before == null || before.mode != CameraMode.SPECTATOR;
+            boolean last = after == null || after.mode != CameraMode.SPECTATOR;
+            ReplayEdit.Switch p0 = first ? current : before;
+            ReplayEdit.Switch p3 = last ? next : after;
             float t = MathHelper.clamp((float)(this.clipTimeMs() - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
-            float smooth = t * t * (3.0F - 2.0F * t);
-            x = MathHelper.lerp(smooth, current.x, next.x);
-            y = MathHelper.lerp(smooth, current.y, next.y);
-            z = MathHelper.lerp(smooth, current.z, next.z);
-            yaw = MathHelper.lerpAngleDegrees(smooth, current.yaw, next.yaw);
-            pitch = MathHelper.lerp(smooth, current.pitch, next.pitch);
+            float u = first && last ? t * t * (3.0F - 2.0F * t) : first ? t * t * (2.0F - t) : last ? t * (1.0F + t - t * t) : t;
+            x = catmullRom(u, p0.x, current.x, next.x, p3.x);
+            y = catmullRom(u, p0.y, current.y, next.y, p3.y);
+            z = catmullRom(u, p0.z, current.z, next.z, p3.z);
+            // Unwrap the yaws around the current one so the camera turns the short way.
+            double y1 = current.yaw;
+            double y0 = y1 + MathHelper.wrapDegrees(p0.yaw - current.yaw);
+            double y2 = y1 + MathHelper.wrapDegrees(next.yaw - current.yaw);
+            double y3 = y2 + MathHelper.wrapDegrees(p3.yaw - next.yaw);
+            yaw = (float)catmullRom(u, y0, y1, y2, y3);
+            pitch = MathHelper.clamp((float)catmullRom(u, p0.pitch, current.pitch, next.pitch, p3.pitch), -90.0F, 90.0F);
          }
 
          boolean jump = current == this.lastSwitch && this.freeCamera.squaredDistanceTo(x, y, z) > 400.0;
@@ -561,6 +593,12 @@ public final class ReplayPlayer {
       this.feedUntil(target);
       this.timeMs = Math.max(this.timeMs, target);
       this.smoothSelf(this.timeMs);
+      if (this.client.player != null) {
+         // Knockback, explosions and server corrections would push the replayed you around between records.
+         this.client.player.setVelocity(Vec3d.ZERO);
+      }
+
+      this.updateStand();
       if (this.client.world != null) {
          this.client.world.getTickManager().setFrozen(this.paused);
          this.client.world.getTickManager().setTickRate(20.0F * this.speed);
@@ -622,6 +660,100 @@ public final class ReplayPlayer {
             return;
          }
       }
+   }
+
+   /** Keeps the stand-in on your recorded spot, pose, gear and health; it is only in the world for camera views that show you. */
+   private void updateStand() {
+      ClientPlayerEntity player = this.client.player;
+      ClientWorld world = this.client.world;
+      boolean wanted = player != null && world != null && this.mode != CameraMode.FIRST_PERSON;
+      if (!wanted) {
+         this.removeStand();
+         return;
+      }
+
+      Vec3d pos = new Vec3d(player.getX(), player.getY(), player.getZ());
+      if (this.stand == null || this.stand.getEntityWorld() != world || this.stand.isRemoved()) {
+         this.removeStand();
+         this.stand = new Stand(world, player);
+         this.stand.setId(STAND_ID);
+         this.stand.refreshPositionAndAngles(pos, player.getYaw(), player.getPitch());
+         this.stand.setHeadYaw(player.getHeadYaw());
+         this.stand.setBodyYaw(player.getBodyYaw());
+         this.stand.resetPosition();
+         world.addEntity(this.stand);
+      }
+
+      OtherClientPlayerEntity stand = this.stand;
+      if (stand.squaredDistanceTo(pos) > 64.0) {
+         stand.refreshPositionAndAngles(pos, player.getYaw(), player.getPitch());
+         stand.resetPosition();
+      } else {
+         // Move it over its next tick, like the server moves other players, so its legs animate.
+         stand.getInterpolator().refreshPositionAndAngles(pos, player.getYaw(), player.getPitch());
+      }
+
+      stand.updateTrackedHeadRotation(player.getHeadYaw(), 1);
+      stand.setPose(player.getPose());
+      stand.setSneaking(player.isSneaking());
+      stand.setSprinting(player.isSprinting());
+      stand.setHealth(player.getHealth());
+      stand.hurtTime = player.hurtTime;
+      stand.maxHurtTime = player.maxHurtTime;
+      for (EquipmentSlot slot : EquipmentSlot.values()) {
+         ItemStack worn = player.getEquippedStack(slot);
+         if (!ItemStack.areEqual(worn, stand.getEquippedStack(slot))) {
+            stand.equipStack(slot, worn.copy());
+         }
+      }
+   }
+
+   /**
+    * The stand-in needs its own ID (the world refuses a second entity with your player's ID) but wears your skin.
+    */
+   private static final class Stand extends OtherClientPlayerEntity {
+      Stand(ClientWorld world, ClientPlayerEntity player) {
+         super(world, new com.mojang.authlib.GameProfile(java.util.UUID.nameUUIDFromBytes(("killclip-stand:" + player.getUuid()).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            player.getGameProfile().name(), player.getGameProfile().properties()));
+      }
+
+      @Override
+      public net.minecraft.entity.player.SkinTextures getSkin() {
+         ClientPlayerEntity player = MinecraftClient.getInstance().player;
+         return player != null ? player.getSkin() : super.getSkin();
+      }
+   }
+
+   private void removeStand() {
+      if (this.stand != null) {
+         if (this.stand.getEntityWorld() instanceof ClientWorld world) {
+            world.removeEntity(STAND_ID, net.minecraft.entity.Entity.RemovalReason.DISCARDED);
+         }
+
+         this.stand = null;
+      }
+   }
+
+   /** The entity the third person and spectator cameras show: the stand-in, or your player before it exists. */
+   private net.minecraft.entity.LivingEntity shown() {
+      return this.stand != null ? this.stand : this.client.player;
+   }
+
+   /** A Catmull-Rom curve: passes through b at 0 and c at 1, shaped by a and d on either side. */
+   private static double catmullRom(float t, double a, double b, double c, double d) {
+      double t2 = t * t;
+      double t3 = t2 * t;
+      return 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (3.0 * b - a - 3.0 * c + d) * t3);
+   }
+
+   /** Adds a spectator keyframe at the current time from where the free camera is now. */
+   void addKeyframeHere() {
+      if (this.mode != CameraMode.SPECTATOR) {
+         this.setMode(CameraMode.SPECTATOR);
+      }
+
+      this.addSwitchHere();
+      this.manualCamera = false;
    }
 
    /** x, y, z, yaw, pitch, head yaw and body yaw from a recording of your own movement, or null. */
@@ -786,6 +918,9 @@ public final class ReplayPlayer {
             player.handSwinging = true;
             player.handSwingTicks = -1;
             player.preferredHand = hand;
+            if (this.stand != null) {
+               this.stand.swingHand(hand);
+            }
          }
 
          for (int i = 0; i < ReplayCapture.SLOTS.length; i++) {
@@ -813,7 +948,8 @@ public final class ReplayPlayer {
             this.client.options.setPerspective(Perspective.FIRST_PERSON);
          }
          case THIRD_PERSON -> {
-            this.client.setCameraEntity(player);
+            this.updateStand();
+            this.client.setCameraEntity(this.shown());
             this.client.options.setPerspective(Perspective.THIRD_PERSON_BACK);
          }
          case SPECTATOR -> {
@@ -958,6 +1094,7 @@ public final class ReplayPlayer {
    }
 
    private void restoreView() {
+      this.removeStand();
       if (this.chatBeforeExport != null) {
          this.client.options.getChatVisibility().setValue(this.chatBeforeExport);
          this.chatBeforeExport = null;

@@ -1,7 +1,6 @@
 package dev.killclip.client;
 
 import dev.killclip.core.VideoTools;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -19,24 +18,24 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
 /**
- * Shares a clip: posts it to a Discord channel through a webhook (shrunk to fit Discord's upload limit), and/or
- * makes a vertical 9:16 copy for YouTube Shorts, TikTok and Reels.
+ * Shares a clip as a link: uploads it to catbox.moe (free, no account) and copies the link, which plays right in
+ * Discord when pasted. Also makes vertical 9:16 copies for YouTube Shorts, TikTok and Reels.
  */
 @Environment(EnvType.CLIENT)
 final class ShareScreen extends Screen {
-   /** Discord's upload limit for a webhook without a boosted server is 10 MB. */
-   private static final long DISCORD_LIMIT = 10L * 1000L * 1000L - 200_000L;
+   private static final String HOST = "https://catbox.moe/user/api.php";
+   /** catbox.moe takes files up to 200 MB. */
+   private static final long UPLOAD_LIMIT = 190L * 1000L * 1000L;
    private final Screen parent;
    private final Path clip;
-   private TextFieldWidget webhook;
-   private TextFieldWidget message;
    private boolean vertical;
    private boolean busy;
    private String status = "";
+   private String link = "";
+   private ButtonWidget copyButton;
 
    ShareScreen(Screen parent, Path clip) {
       super(Text.literal("Share clip"));
@@ -47,45 +46,36 @@ final class ShareScreen extends Screen {
    @Override
    protected void init() {
       int x = this.width / 2 - 160;
-      int y = 50;
-      this.webhook = new TextFieldWidget(this.textRenderer, x, y, 320, 20, Text.literal("Discord webhook URL"));
-      this.webhook.setMaxLength(300);
-      this.webhook.setText(KillClipperClient.instance().settings().discordWebhook);
-      this.webhook.setPlaceholder(Text.literal("https://discord.com/api/webhooks/..."));
-      this.addDrawableChild(this.webhook);
-      this.message = new TextFieldWidget(this.textRenderer, x, y + 40, 320, 20, Text.literal("Message"));
-      this.message.setMaxLength(1500);
-      this.message.setPlaceholder(Text.literal("Message (optional)"));
-      this.addDrawableChild(this.message);
+      int y = 60;
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Get a link (copies it)"), b -> this.upload()).dimensions(x, y, 320, 20).build());
       this.addDrawableChild(ButtonWidget.builder(this.shapeLabel(), b -> {
          this.vertical = !this.vertical;
          b.setMessage(this.shapeLabel());
-      }).dimensions(x, y + 70, 158, 20).build());
+      }).dimensions(x, y + 24, 158, 20).build());
       this.addDrawableChild(ButtonWidget.builder(Text.literal("Make 9:16 copy only"), b -> {
          KillClipperClient.instance().makeVertical(this.clip);
          this.status = "Making the vertical copy; it appears in your clips folder.";
-      }).dimensions(x + 162, y + 70, 158, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Send to Discord"), b -> this.send()).dimensions(x, y + 100, 158, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Back"), b -> this.close()).dimensions(x + 162, y + 100, 158, 20).build());
+      }).dimensions(x + 162, y + 24, 158, 20).build());
+      this.copyButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Copy link again"), b -> this.copyLink())
+         .dimensions(x, y + 48, 158, 20).build());
+      this.copyButton.active = !this.link.isEmpty();
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Back"), b -> this.close()).dimensions(x + 162, y + 48, 158, 20).build());
    }
 
    private Text shapeLabel() {
-      return Text.literal("Send as: " + (this.vertical ? "Vertical 9:16" : "Normal 16:9"));
+      return Text.literal("Shape: " + (this.vertical ? "Vertical 9:16" : "Normal 16:9"));
    }
 
-   private static boolean isWebhook(String url) {
-      return url.matches("https://(?:(?:ptb|canary)\\.)?discord(?:app)?\\.com/api/webhooks/\\d+/[\\w-]+");
+   private void copyLink() {
+      if (!this.link.isEmpty()) {
+         this.client.keyboard.setClipboard(this.link);
+         this.status = "Link copied. Paste it in Discord (Ctrl+V): " + this.link;
+      }
    }
 
-   private void send() {
-      String url = this.webhook.getText().strip();
+   private void upload() {
       String ffmpeg = KillClipperClient.instance().ffmpeg();
       if (this.busy) {
-         return;
-      }
-
-      if (!isWebhook(url)) {
-         this.status = "Paste a Discord webhook URL: Channel settings > Integrations > Webhooks > Copy URL.";
          return;
       }
 
@@ -94,18 +84,12 @@ final class ShareScreen extends Screen {
          return;
       }
 
-      ClipConfig config = KillClipperClient.instance().settings();
-      if (!url.equals(config.discordWebhook)) {
-         config.discordWebhook = url;
-         KillClipperClient.instance().saveSettings(config);
-      }
-
-      String text = this.message.getText().strip();
       boolean vertical = this.vertical;
       this.busy = true;
       this.status = "Preparing the clip...";
       CompletableFuture.runAsync(() -> {
          String result;
+         String url = "";
          Path work = this.clip.resolveSibling(".share");
          try {
             Files.createDirectories(work);
@@ -115,16 +99,16 @@ final class ShareScreen extends Screen {
                VideoTools.vertical(ffmpeg, this.clip, source);
             }
 
-            Path upload = VideoTools.fitSize(ffmpeg, source, DISCORD_LIMIT, work.resolve("share-upload.mp4"));
-            this.setStatus("Uploading " + Files.size(upload) / 100_000 / 10.0 + " MB to Discord...");
+            // An mp4 under the host's limit plays inline in Discord; anything else is converted or shrunk first.
+            Path upload = VideoTools.fitSize(ffmpeg, source, UPLOAD_LIMIT, work.resolve("share-upload.mp4"));
+            this.setStatus("Uploading " + Files.size(upload) / 100_000 / 10.0 + " MB...");
             String name = this.clip.getFileName().toString().replaceAll("\\.[^.]+$", "") + (vertical ? "_vertical" : "") + ".mp4";
-            int code = post(url, text, upload, name);
-            result = code / 100 == 2 ? "Sent to Discord." : "Discord refused the upload (HTTP " + code + ").";
+            url = post(upload, name);
+            result = "Link copied. Paste it in Discord (Ctrl+V): " + url;
          } catch (Exception e) {
-            result = "Share failed: " + e.getMessage();
+            result = "Upload failed: " + e.getMessage();
          }
 
-         // The shrunk copies are only for the upload.
          try {
             Files.deleteIfExists(work.resolve("share-vertical.mp4"));
             Files.deleteIfExists(work.resolve("share-upload.mp4"));
@@ -133,9 +117,15 @@ final class ShareScreen extends Screen {
          }
 
          String done = result;
+         String link = url;
          MinecraftClient.getInstance().execute(() -> {
             this.busy = false;
             this.status = done;
+            if (!link.isEmpty()) {
+               this.link = link;
+               this.client.keyboard.setClipboard(link);
+               this.copyButton.active = true;
+            }
          });
       });
    }
@@ -144,57 +134,42 @@ final class ShareScreen extends Screen {
       MinecraftClient.getInstance().execute(() -> this.status = text);
    }
 
-   /** Posts one file to a webhook as multipart/form-data; returns the HTTP status. */
-   private static int post(String url, String text, Path file, String fileName) throws IOException, InterruptedException {
+   /** Uploads the file as multipart/form-data and returns the link the host answers with. */
+   private static String post(Path file, String fileName) throws IOException, InterruptedException {
       String boundary = "----killclip" + UUID.randomUUID();
-      ByteArrayOutputStream body = new ByteArrayOutputStream();
-      String json = "{\"content\":" + jsonString(text) + "}";
-      body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n" + json + "\r\n")
-         .getBytes(StandardCharsets.UTF_8));
-      body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"" + fileName.replace("\"", "")
-         + "\"\r\nContent-Type: video/mp4\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-      body.write(Files.readAllBytes(file));
-      body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-      HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-         .timeout(Duration.ofMinutes(3))
+      String head = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"reqtype\"\r\n\r\nfileupload\r\n"
+         + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"fileToUpload\"; filename=\"" + fileName.replace("\"", "")
+         + "\"\r\nContent-Type: video/mp4\r\n\r\n";
+      String tail = "\r\n--" + boundary + "--\r\n";
+      HttpRequest request = HttpRequest.newBuilder(URI.create(HOST))
+         .timeout(Duration.ofMinutes(10))
          .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-         .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+         .POST(HttpRequest.BodyPublishers.concat(
+            HttpRequest.BodyPublishers.ofByteArray(head.getBytes(StandardCharsets.UTF_8)),
+            HttpRequest.BodyPublishers.ofFile(file),
+            HttpRequest.BodyPublishers.ofByteArray(tail.getBytes(StandardCharsets.UTF_8))))
          .build();
-      HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-      return response.statusCode();
-   }
-
-   private static String jsonString(String text) {
-      StringBuilder out = new StringBuilder("\"");
-      for (char c : text.toCharArray()) {
-         switch (c) {
-            case '"' -> out.append("\\\"");
-            case '\\' -> out.append("\\\\");
-            case '\n' -> out.append("\\n");
-            case '\r' -> out.append("\\r");
-            case '\t' -> out.append("\\t");
-            default -> {
-               if (c < 0x20) {
-                  out.append(String.format("\\u%04x", (int)c));
-               } else {
-                  out.append(c);
-               }
-            }
-         }
+      HttpResponse<String> response = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
+         .send(request, HttpResponse.BodyHandlers.ofString());
+      String body = response.body().strip();
+      if (response.statusCode() / 100 != 2 || !body.startsWith("https://")) {
+         throw new IOException("the host answered " + response.statusCode() + (body.isEmpty() ? "" : ": " + body.lines().findFirst().orElse("")));
       }
 
-      return out.append('"').toString();
+      return body;
    }
 
    @Override
    public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
       super.render(context, mouseX, mouseY, deltaTicks);
-      int x = this.width / 2 - 160;
       context.drawCenteredTextWithShadow(this.textRenderer, this.clip.getFileName().toString(), this.width / 2, 14, 0xFFFFFFFF);
-      context.drawTextWithShadow(this.textRenderer, "Discord webhook (Channel settings > Integrations > Webhooks)", x, 38, 0xFFAAAAAA);
-      context.drawTextWithShadow(this.textRenderer, "Message", x, 78, 0xFFAAAAAA);
+      context.drawCenteredTextWithShadow(this.textRenderer, "Uploads to catbox.moe. Anyone with the link can watch it.", this.width / 2, 36, 0xFFAAAAAA);
       if (!this.status.isEmpty()) {
-         context.drawCenteredTextWithShadow(this.textRenderer, this.status, this.width / 2, 180, 0xFFFFFF55);
+         int y = 140;
+         for (var line : this.textRenderer.wrapLines(Text.literal(this.status), this.width - 40)) {
+            context.drawCenteredTextWithShadow(this.textRenderer, line, this.width / 2, y, 0xFFFFFF55);
+            y += 10;
+         }
       }
    }
 
