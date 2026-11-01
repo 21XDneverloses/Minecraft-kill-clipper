@@ -30,7 +30,7 @@ public final class KillRules {
          for (Pattern pattern : patterns) {
             Matcher match = pattern.matcher(plain);
             if (match.matches()) {
-               Optional<KillRules.Kill> result = validate(match.group("killer"), match.group("victim"), local, online);
+               Optional<KillRules.Kill> result = validate(killer(match, local), match.group("victim"), local, online);
                if (result.isPresent()) {
                   return result;
                }
@@ -56,7 +56,7 @@ public final class KillRules {
                continue;
             }
 
-            Optional<KillRules.Kill> result = validate(match.group("killer"), match.group("victim"), local, online);
+            Optional<KillRules.Kill> result = validate(killer(match, local), match.group("victim"), local, online);
             if (result.isPresent()) {
                return result;
             }
@@ -66,6 +66,30 @@ public final class KillRules {
       return Optional.empty();
    }
 
+   /** Rules without a killer group ("KILL! on Bob") are messages only the killer sees, so the killer is you. */
+   private static String killer(Matcher match, String local) {
+      return match.pattern().pattern().contains("(?<killer>") ? match.group("killer") : local;
+   }
+
+   private static final Pattern YOU = Pattern.compile("(?i)(?<![A-Za-z0-9_'])you(?![A-Za-z0-9_'])");
+
+   /**
+    * Many servers say "You" instead of your name ("You killed Bob", "Bob was slain by you"). Writing your name
+    * in its place lets every rule read those lines; who killed whom stays the same, so "Bob killed you" still
+    * makes Bob the killer and is never counted.
+    */
+   public static String youAsName(String message, String local, Set<String> online) {
+      if (online.contains("You") || online.contains("you")) {
+         return message;
+      }
+
+      return YOU.matcher(message).replaceAll(Matcher.quoteReplacement(local));
+   }
+
+   public static boolean mentionsYou(String message, String local) {
+      return message.contains(local) || YOU.matcher(message).find();
+   }
+
    private static final Pattern NAME_TOKEN = Pattern.compile("[A-Za-z0-9_]{1,16}");
    private static final Pattern KILL_WORD = Pattern.compile(
       "(?i)\\b(?:killed|kills|slain|slew|slayed|eliminated|defeated|destroyed|murdered|finished|obliterated|annihilated|blown|blew"
@@ -73,7 +97,7 @@ public final class KillRules {
          + "|rekt|wrecked|clapped|deleted|bested|one-?tapped|pwned|owned|taken\\s+out|took\\s+out|sent\\s+to|wiped|smoked|outplayed|fragged|demolished|crushed|dominated|humiliated|eviscerated|executed|slaughtered|smashed|stomped|bodied|dismantled|erased|vaporized|terminated|neutralized|dispatched|shattered|butchered|bonked|melted|cooked|fried|farmed|disintegrated|decimated|massacred|squashed|pummeled|pummelled|zapped|sliced|stabbed|impaled|beheaded|knocked\\s+out)\\b"
    );
    /** Words right after a name that mean that player is the one who died or lost. */
-   private static final Pattern LOSER_VERB = Pattern.compile("(?i)^\\W*(?:was|were|got|has\\s+been|have\\s+been|is|died|fell|perished|lost|tried|hit|drowned|burned|burnt|went|suffocated|starved|froze|withered)\\b");
+   private static final Pattern LOSER_VERB = Pattern.compile("(?i)^\\W*(?:was|were|got|has\\s+been|have\\s+been|has\\s+(?:died|fallen|perished|lost)|is|died|fell|perished|lost|tried|hit|drowned|burned|burnt|went|suffocated|starved|froze|withered)\\b");
    /** Words right before a name that make that player the killer ("by You", "to You", "fighting You"). */
    /** "by Bob" or "to Bob": the other player did it, so it is not your kill. */
    private static final Pattern OTHER_IS_KILLER = Pattern.compile("(?i)\\b(?:by|to)\\s+(?:[\\[(][^\\])]{1,16}[\\])]\\s*)?$");

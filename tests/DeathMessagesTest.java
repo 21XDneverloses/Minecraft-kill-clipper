@@ -42,6 +42,40 @@ public final class DeathMessagesTest {
       }) {
          check(KillRules.guess(line, "Me", online.contains("Carl") ? online : Set.of("Me", "Bob", "Carl", "Locked_Gears")).isEmpty(), "guess ignores: " + line);
       }
+      // Formats from more servers: Hypixel themed and final kills, The Pit, practice results, anarchy crystals,
+      // bounty and lifesteal servers, combat logging, health after names, and lines that say "You".
+      for (String line : new String[] {
+         "Bob was struck down by Me.", "Bob was knocked into the void by Me. FINAL KILL!", "Bob was turned to dust by Me. FINAL KILL!",
+         "Bob was blown to bits by Me's End Crystal", "Bob was sent to the shadow realm by Me!", "KILL! on [120] Bob +12XP +11.50g",
+         "DOUBLE KILL! on [XII-87] Bob", "Winner: Me (12.5❤) Loser: Bob", "Winner » Me | Loser » Bob", "Me claimed the $5,000 bounty on Bob",
+         "Me stole a heart from Bob", "Bob logged out while in combat with Me", "Bob combat logged against Me", "Me (12.5❤) killed Bob",
+         "Bob has died to Me", "Bob [3/20] was slain by Me", "Bob was killed by Me (5.5❤)"
+      }) {
+         check(KillRules.searchMessage(line, universal, "Me", online).isPresent(), "more servers: " + line);
+      }
+      for (String line : new String[] {
+         "You killed Bob!", "Bob was slain by you", "You have eliminated Bob", "Bob was struck down by You.", "Winner: You Loser: Bob",
+         "You claimed the bounty on Bob", "Bob lost the duel to you"
+      }) {
+         check(KillRules.mentionsYou(line, "Me"), "reaches the rules: " + line);
+         check(KillRules.searchMessage(KillRules.youAsName(line, "Me", online), universal, "Me", online).isPresent(), "you as name: " + line);
+      }
+      for (String line : new String[] {
+         "Bob was invited by Me", "Bob was invited to the party by Me", "Bob was kicked from the party by Me", "Bob was hit by Me",
+         "Bob was combat tagged by Me", "Bob was killed by Carl, assisted by Me", "Bob was killed by Carl. Assisted by Me",
+         "Bob was teleported to Me", "Bob was healed by Me", "Me was struck down by Bob.", "Winner: Bob Loser: Me",
+         "Bob claimed the bounty on Me", "Me logged out while in combat with Bob", "Bob was struck down by Me in a duel request from Carl"
+      }) {
+         check(KillRules.searchMessage(line, universal, "Me", online).isEmpty(), "more servers ignore: " + line);
+      }
+      for (String line : new String[] {
+         "You were killed by Bob", "Bob killed you", "You were struck down by Bob.", "Bob has killed You.", "Winner: Bob Loser: You",
+         "You lost the duel to Bob", "Bob: you killed Me lol", "You logged out while in combat with Bob"
+      }) {
+         check(KillRules.searchMessage(KillRules.youAsName(line, "Me", online), universal, "Me", online).isEmpty(), "your death with You: " + line);
+      }
+      check(KillRules.youAsName("Thank you Bob", "Me", online).equals("Thank Me Bob"), "you is replaced as a whole word");
+      check(KillRules.youAsName("Bob is young", "Me", online).equals("Bob is young"), "young is not you");
       System.out.println("all DeathMessages checks passed");
    }
 

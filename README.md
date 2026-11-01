@@ -36,6 +36,7 @@ The jar is written to `build/libs/`. Needs Java 21.
 
 The files in `tests/` are standalone and run with `javac` and `java`:
 
+- `DeathMessagesTest`: kill-message rules for many servers, and lines where you died that must never count.
 - `StreakTrackerTest`, `HitTrackerTest`: streak grouping, hit tracking, and unpacking the bundled FFmpeg.
 - `ReplayBufferTest`, `GameAudioTest`: record synthetic frames and audio through FFmpeg and save clips. Both need `ffmpeg` on PATH.
 
