@@ -632,6 +632,10 @@ public final class KillClipperClient implements ClientModInitializer {
       });
    }
 
+   boolean recorderRunning() {
+      return this.recorder.running();
+   }
+
    /** The FFmpeg the recorder uses, or null while it is still being unpacked. */
    public String ffmpeg() {
       return this.recorder.ffmpegPath(this.config);

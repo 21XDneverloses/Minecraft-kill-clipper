@@ -253,6 +253,10 @@ public final class ReplayPlayer {
    static void onDisconnected(ClientConnection conn) {
       ReplayPlayer player = active;
       if (player != null && conn == player.connection) {
+         if (player.exporting()) {
+            exportStatus = "Export stopped: the replay was closed before the clip finished playing.";
+         }
+
          active = null;
          player.closed = true;
          player.restoreView();
@@ -482,6 +486,11 @@ public final class ReplayPlayer {
          return;
       }
 
+      if (!KillClipperClient.instance().recorderRunning()) {
+         exportStatus = "Export failed: recording is off or FFmpeg isn't running. Turn Recording on in the settings (see /killclip status).";
+         return;
+      }
+
       exportStatus = "";
       this.exportFormat = format;
       this.exportVertical = vertical;
@@ -652,6 +661,15 @@ public final class ReplayPlayer {
          && this.timeMs >= this.clipStartMs && this.seekTargetMs < 0L) {
          this.openEditorOnLoad = false;
          this.client.setScreen(new ReplayEditorScreen(this));
+      }
+
+      // Esc during an export stops it: the pause menu would end up in the video.
+      if (this.exporting() && this.client.currentScreen instanceof net.minecraft.client.gui.screen.GameMenuScreen) {
+         this.finishExport(false);
+         this.setPaused(true);
+         exportStatus = "Export stopped. Press Export and let the clip play to the end without pressing anything.";
+         this.client.setScreen(new ReplayEditorScreen(this));
+         return;
       }
 
       if (this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.client.currentScreen == null

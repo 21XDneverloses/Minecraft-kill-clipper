@@ -77,10 +77,37 @@ final class ReplayEdit {
       this.file = file;
    }
 
+   /**
+    * Edits live in a hidden ".edits" folder next to the clips: a .kcedit beside the video looked like the export.
+    * One from an older version is moved there.
+    */
    static Path editFile(Path replay) {
       String name = replay.getFileName().toString();
       int dot = name.lastIndexOf('.');
-      return replay.resolveSibling((dot > 0 ? name.substring(0, dot) : name) + ".kcedit");
+      String file = (dot > 0 ? name.substring(0, dot) : name) + ".kcedit";
+      Path edit = replay.resolveSibling(".edits").resolve(file);
+      Path old = replay.resolveSibling(file);
+      if (!Files.exists(edit) && Files.isRegularFile(old)) {
+         try {
+            createEditsDir(edit.getParent());
+            Files.move(old, edit);
+         } catch (IOException e) {
+            return old;
+         }
+      }
+
+      return edit;
+   }
+
+   private static void createEditsDir(Path dir) throws IOException {
+      if (!Files.isDirectory(dir)) {
+         Files.createDirectories(dir);
+         try {
+            Files.setAttribute(dir, "dos:hidden", true);
+         } catch (IOException | UnsupportedOperationException | IllegalArgumentException ignored) {
+            // Not Windows: the dot in the name already hides it.
+         }
+      }
    }
 
    static ReplayEdit load(Path replay) {
@@ -111,6 +138,7 @@ final class ReplayEdit {
       saved.trimStartMs = this.trimStartMs;
       saved.trimEndMs = this.trimEndMs;
       try {
+         createEditsDir(this.file.getParent());
          Files.writeString(this.file, GSON.toJson(saved));
       } catch (IOException e) {
          KillClipperClient.LOGGER.warn("Could not save camera edits {}", this.file, e);
