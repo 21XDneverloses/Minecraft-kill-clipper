@@ -309,6 +309,11 @@ public final class ReplayCapture {
 
    /** Saves the replay for a clip from a log claimed with {@link #hold}; the hold is released when done. */
    static CompletableFuture<Path> save(ReplayLog.Hold hold, long fromMs, long toMs, Path output) {
+      return save(hold, fromMs, toMs, 0L, output);
+   }
+
+   /** {@code videoLeadMs}: where {@code fromMs} falls in the clip's video, so an export can line up its sound. */
+   static CompletableFuture<Path> save(ReplayLog.Hold hold, long fromMs, long toMs, long videoLeadMs, Path output) {
 
       MinecraftClient client = MinecraftClient.getInstance();
       Map<String, String> info = new LinkedHashMap<>();
@@ -322,6 +327,8 @@ public final class ReplayCapture {
       if (client.getCurrentServerEntry() != null) {
          info.put("server", client.getCurrentServerEntry().address);
       }
+
+      info.put("videoLeadMs", String.valueOf(videoLeadMs));
 
       return hold.saveClip(fromMs, toMs, info, output);
    }

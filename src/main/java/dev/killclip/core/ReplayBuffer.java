@@ -448,6 +448,13 @@ public final class ReplayBuffer implements AutoCloseable {
     * segment in the window to be finished, then stitches segments without
     * re-encoding. The clip may start up to one second early.
     */
+   /** How far after the start of a clip's video {@code fromMs} is: clips start on a whole one-second segment. */
+   public long videoLeadMs(long fromMs) {
+      long oldest = Math.max(0L, this.currentSegment() - this.settings.bufferSeconds());
+      long first = Math.max(oldest, Math.max(0L, (fromMs - this.startMs) / 1000L));
+      return Math.max(0L, fromMs - (this.startMs + first * 1000L));
+   }
+
    public CompletableFuture<Path> saveClip(long fromMs, long toMs, Path output) {
       long oldest = Math.max(0L, this.currentSegment() - this.settings.bufferSeconds());
       long first = Math.max(oldest, Math.max(0L, (fromMs - this.startMs) / 1000L));

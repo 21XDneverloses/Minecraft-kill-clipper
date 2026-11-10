@@ -137,6 +137,8 @@ public final class ReplayPlayer {
    private String exportFormat;
    private boolean exportVertical;
    private long exportStartRealMs;
+   /** How far into the clip's own video the replay's clip start is (the video starts on a whole second). */
+   private final long videoLeadMs;
    private net.minecraft.network.message.ChatVisibility chatBeforeExport;
 
    private ReplayPlayer(MinecraftClient client, Path file, List<ReplayLog.Entry> entries, Map<String, String> header) {
@@ -164,6 +166,7 @@ public final class ReplayPlayer {
          }
       }
       this.clipStartMs = parse(header.get("clipStartMs"), 0L);
+      this.videoLeadMs = parse(header.get("videoLeadMs"), 0L);
       this.clipEndMs = parse(header.get("clipEndMs"), entries.isEmpty() ? 0L : entries.getLast().timeMs());
       this.edit = ReplayEdit.load(file);
       this.connection = new ClientConnection(NetworkSide.CLIENTBOUND);
@@ -377,21 +380,49 @@ public final class ReplayPlayer {
       long[] trim = this.trim();
       double total = 0.0;
       for (long t = trim[0]; t < trim[1]; t += 50L) {
-         ReplayEdit.Switch current = this.edit.at(t);
-         float speed = 1.0F;
-         if (current != null) {
-            speed = current.speed();
-            ReplayEdit.Switch next = this.edit.after(current);
-            if (next != null && next.timeMs > current.timeMs) {
-               float f = MathHelper.clamp((float)(t - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
-               speed = MathHelper.lerp(f * f * (3.0F - 2.0F * f), current.speed(), next.speed());
-            }
-         }
-
-         total += Math.min(50L, trim[1] - t) / (double)Math.max(0.125F, speed);
+         total += Math.min(50L, trim[1] - t) / (double)this.speedAt(t);
       }
 
       return (long)total;
+   }
+
+   /** The edit's playback speed at {@code t} ms into the clip, with the smooth ramps between parts. */
+   private float speedAt(long t) {
+      ReplayEdit.Switch current = this.edit.at(t);
+      float speed = 1.0F;
+      if (current != null) {
+         speed = current.speed();
+         ReplayEdit.Switch next = this.edit.after(current);
+         if (next != null && next.timeMs > current.timeMs) {
+            float f = MathHelper.clamp((float)(t - current.timeMs) / (float)(next.timeMs - current.timeMs), 0.0F, 1.0F);
+            speed = MathHelper.lerp(f * f * (3.0F - 2.0F * f), current.speed(), next.speed());
+         }
+      }
+
+      return Math.max(0.125F, speed);
+   }
+
+   /** The clip's own sound for the trimmed part, cut into stretches of one speed (positions in its video). */
+   private List<dev.killclip.core.VideoTools.AudioPart> audioParts() {
+      long[] trim = this.trim();
+      List<dev.killclip.core.VideoTools.AudioPart> parts = new java.util.ArrayList<>();
+      long partStart = trim[0];
+      float partSpeed = Math.round(this.speedAt(trim[0]) * 20.0F) / 20.0F;
+      for (long t = trim[0] + 50L; t <= trim[1]; t += 50L) {
+         float speed = t >= trim[1] ? -1.0F : Math.round(this.speedAt(t) * 20.0F) / 20.0F;
+         if (speed != partSpeed) {
+            long end = Math.min(t, trim[1]);
+            parts.add(new dev.killclip.core.VideoTools.AudioPart((partStart + this.videoLeadMs) / 1000.0, (end + this.videoLeadMs) / 1000.0, Math.max(0.125F, partSpeed)));
+            partStart = end;
+            partSpeed = speed;
+         }
+      }
+
+      if (partStart < trim[1]) {
+         parts.add(new dev.killclip.core.VideoTools.AudioPart((partStart + this.videoLeadMs) / 1000.0, (trim[1] + this.videoLeadMs) / 1000.0, Math.max(0.125F, partSpeed)));
+      }
+
+      return parts;
    }
 
    /** The trim range as {start, end} in ms into the clip. */
@@ -477,17 +508,8 @@ public final class ReplayPlayer {
          return;
       }
 
-      // Slow-mo makes the export play longer than the clip; check it fits the buffer before playing it all.
-      long playMs = this.exportPlayMs();
-      int buffer = KillClipperClient.instance().settings().effectiveBufferSeconds();
-      if (playMs > buffer * 1000L) {
-         exportStatus = "Export failed: it plays " + playMs / 1000L + " s but the buffer keeps " + buffer
-            + " s. Trim it shorter, use less slow-mo, or raise Buffer in the settings.";
-         return;
-      }
-
-      if (!KillClipperClient.instance().recorderRunning()) {
-         exportStatus = "Export failed: recording is off or FFmpeg isn't running. Turn Recording on in the settings (see /killclip status).";
+      if (KillClipperClient.instance().ffmpeg() == null) {
+         exportStatus = "Export failed: FFmpeg isn't ready yet. Try again in a few seconds (see /killclip status).";
          return;
       }
 
@@ -512,21 +534,93 @@ public final class ReplayPlayer {
    /** The last exported file, for sharing it from the editor. */
    static volatile Path exportedFile;
 
+   private void startExportJob() {
+      ClipConfig config = KillClipperClient.instance().settings();
+      String name = this.file.getFileName().toString().replace(".kcreplay", "").replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", "");
+      String stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
+      Path output = config.editedDir().resolve(stamp + "_edit_" + name + "." + this.exportFormat);
+      ExportJob.active = new ExportJob(output, config.fps, KillClipperClient.instance().encoderInUse(), config.quality, config.resolution);
+   }
+
    private void finishExport(boolean saved) {
       String format = this.exportFormat;
-      long start = this.exportStartRealMs;
+      boolean vertical = this.exportVertical;
+      ExportJob job = ExportJob.active;
+      ExportJob.active = null;
       this.exportFormat = null;
       if (this.chatBeforeExport != null) {
          this.client.options.getChatVisibility().setValue(this.chatBeforeExport);
          this.chatBeforeExport = null;
       }
 
-      if (saved && format != null && start > 0L) {
-         // Stop just before the "saving" message shows up on screen.
-         KillClipperClient.instance().exportEdit(start, System.nanoTime() / 1000000L - 100L, this.file, format, this.exportVertical,
-            message -> this.client.execute(() -> exportStatus = message));
-         // Back to the editor, which shows when the file is saved.
-         this.client.setScreen(new ReplayEditorScreen(this));
+      if (job == null) {
+         return;
+      }
+
+      if (!saved || format == null || job.video == null) {
+         if (job.video != null) {
+            job.video.cancel();
+         }
+
+         deleteQuietly(job.output);
+         return;
+      }
+
+      // Back to the editor, which shows the progress until the file is saved.
+      this.client.setScreen(new ReplayEditorScreen(this));
+      exportStatus = "Finishing the export...";
+      List<dev.killclip.core.VideoTools.AudioPart> parts = this.audioParts();
+      Path source = ClipLibraryScreen.findVideoFor(this.file);
+      java.util.concurrent.CompletableFuture.runAsync(() -> {
+         String message;
+         Path saved_ = null;
+         try {
+            job.video.finish();
+            if (job.failure != null) {
+               throw new java.io.IOException(job.failure);
+            }
+
+            String ffmpeg = KillClipperClient.instance().ffmpeg();
+            String note = "";
+            if (source != null && ffmpeg != null) {
+               Path silent = job.output.resolveSibling(".video_" + job.output.getFileName());
+               java.nio.file.Files.move(job.output, silent, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+               try {
+                  if (!dev.killclip.core.VideoTools.withAudio(ffmpeg, silent, source, parts, job.encoder.startsWith("hevc"), job.output)) {
+                     java.nio.file.Files.move(silent, job.output, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                     note = " (the clip has no sound)";
+                  }
+               } finally {
+                  deleteQuietly(silent);
+               }
+            } else {
+               note = " (no sound: the clip's video is missing)";
+            }
+
+            saved_ = job.output;
+            message = "Saved " + job.output.getFileName() + " in the Edited folder." + note;
+         } catch (Exception e) {
+            KillClipperClient.LOGGER.warn("Export failed", e);
+            deleteQuietly(job.output);
+            message = "Export failed: " + (e.getMessage() == null ? e.toString() : e.getMessage());
+         }
+
+         String result = message;
+         Path file = saved_;
+         this.client.execute(() -> {
+            exportStatus = result;
+            if (file != null) {
+               exportedFile = file;
+               KillClipperClient.instance().onExportSaved(file, vertical);
+            }
+         });
+      });
+   }
+
+   private static void deleteQuietly(Path file) {
+      try {
+         java.nio.file.Files.deleteIfExists(file);
+      } catch (java.io.IOException ignored) {
       }
    }
 
@@ -676,9 +770,15 @@ public final class ReplayPlayer {
          && this.timeMs >= this.clipStartMs + trim[0] && this.seekTargetMs < 0L) {
          this.exportStartRealMs = System.nanoTime() / 1000000L;
          this.client.inGameHud.getChatHud().clear(false);
+         this.startExportJob();
       }
 
       long end = this.clipStartMs + trim[1];
+      ExportJob job = ExportJob.active;
+      if (job != null && this.exportStartRealMs > 0L) {
+         job.progress = (float)(this.timeMs - this.clipStartMs - trim[0]) / (float)Math.max(1L, trim[1] - trim[0]);
+      }
+
       if (!this.paused && (this.timeMs >= this.clipEndMs || this.exportStartRealMs > 0L && this.timeMs >= end || before < end && this.timeMs >= end)) {
          this.setPaused(true);
          if (this.exporting()) {
@@ -1188,6 +1288,16 @@ public final class ReplayPlayer {
 
    private void restoreView() {
       this.removeStand();
+      ExportJob job = ExportJob.active;
+      if (job != null) {
+         ExportJob.active = null;
+         if (job.video != null) {
+            job.video.cancel();
+         }
+
+         deleteQuietly(job.output);
+      }
+
       if (this.chatBeforeExport != null) {
          this.client.options.getChatVisibility().setValue(this.chatBeforeExport);
          this.chatBeforeExport = null;

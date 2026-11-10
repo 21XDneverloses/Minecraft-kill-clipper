@@ -79,6 +79,11 @@ public final class ClipLibraryScreen extends Screen {
       return Files.isRegularFile(replay) ? replay : null;
    }
 
+   /** The kill clip's video saved with a replay, or null. */
+   static Path findVideoFor(Path replay) {
+      return findVideo(replay);
+   }
+
    private static Path findVideo(Path replay) {
       for (String type : VideoTools.VIDEO_TYPES) {
          Path video = replay.resolveSibling(baseName(replay) + "." + type);

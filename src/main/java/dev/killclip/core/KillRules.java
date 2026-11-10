@@ -141,6 +141,80 @@ public final class KillRules {
          : Optional.empty();
    }
 
+   private static final Pattern YOU_DIED = Pattern.compile("(?i)^\\W*(?:you\\s+(?:died|were\\s+(?:killed|slain|eliminated|defeated)|lost|have\\s+died|got\\s+killed)|game\\s+over|defeat)\\b");
+
+   /**
+    * True when a line says you died or lost: a vanilla death message about you, a rule match with you as the
+    * victim, or common wording ("Bob killed You", "You were slain by Bob", "You died"). Used to keep your own
+    * deaths out of kill clips.
+    */
+   public static boolean isOwnDeath(String message, List<Pattern> patterns, String local, Set<String> online) {
+      String plain = clean(message);
+      if (plain.length() > 300 || plain.startsWith("<") || plain.matches("^[^:]{0,48}:\\s.*")) {
+         return false;
+      }
+
+      if (YOU_DIED.matcher(plain).find()) {
+         return true;
+      }
+
+      for (Pattern pattern : patterns) {
+         Matcher match = pattern.matcher(plain);
+         if (match.matches() && local.equals(match.group("victim")) && !local.equals(match.group("killer"))) {
+            return true;
+         }
+      }
+
+      if (!KILL_WORD.matcher(plain).find()) {
+         return false;
+      }
+
+      int localAt = -1;
+      int localLength = 0;
+      int otherAt = -1;
+      String other = null;
+      Matcher names = NAME_TOKEN.matcher(plain);
+      while (names.find()) {
+         boolean wordStart = names.start() == 0 || !isNameChar(plain.charAt(names.start() - 1));
+         boolean wordEnd = names.end() == plain.length() || !isNameChar(plain.charAt(names.end()));
+         if (!wordStart || !wordEnd) {
+            continue;
+         }
+
+         String token = names.group();
+         if ((token.equals(local) || token.equalsIgnoreCase("you")) && localAt < 0) {
+            localAt = names.start();
+            localLength = token.length();
+         } else if (other == null && online.contains(token) && !token.equals(local)) {
+            other = token;
+            otherAt = names.start();
+         }
+      }
+
+      if (localAt < 0) {
+         return false;
+      }
+
+      String afterLocal = plain.substring(localAt + localLength);
+      if (other == null) {
+         // "You died", "Steve fell from a high place" with no other player named.
+         return LOSER_VERB.matcher(afterLocal).find();
+      }
+
+      boolean otherFirst = otherAt < localAt
+         && !LOSER_VERB.matcher(plain.substring(otherAt + other.length())).find()
+         && KILL_WORD.matcher(plain.substring(otherAt, localAt)).find()
+         && !OTHER_IS_KILLER.matcher(plain.substring(0, localAt)).find();
+      boolean localLost = localAt < otherAt && LOSER_VERB.matcher(afterLocal).find()
+         && KILLER_PREFIX.matcher(plain.substring(0, otherAt)).find();
+      return otherFirst || localLost;
+   }
+
+   /** True for a vanilla death message (by translation key) about you. */
+   public static boolean isOwnDeathTranslation(String key, List<String> args, String local) {
+      return VanillaDeathMessages.englishTemplates().containsKey(key) && !args.isEmpty() && local.equals(clean(args.get(0)));
+   }
+
    private static boolean isNameChar(char c) {
       return Character.isLetterOrDigit(c) || c == '_';
    }

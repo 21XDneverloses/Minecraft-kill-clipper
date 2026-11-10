@@ -86,6 +86,12 @@ final class DevEditorCheck {
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR export started");
             }
             case 10 -> {
+               ExportJob job = ExportJob.active;
+               if (job != null && job.progress > 0.4F && !barShot) {
+                  barShot = true;
+                  shot(client, "editor-exporting.png");
+               }
+
                if (!ReplayPlayer.exportStatus.startsWith("Saved") && !ReplayPlayer.exportStatus.startsWith("Export failed")) {
                   return;
                }
@@ -104,6 +110,8 @@ final class DevEditorCheck {
       step++;
       stepAt = now;
    }
+
+   private static boolean barShot;
 
    private static void shot(MinecraftClient client, String name) {
       ScreenshotRecorder.saveScreenshot(client.runDirectory, name, client.getFramebuffer(), 1,

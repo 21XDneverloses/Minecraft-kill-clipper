@@ -33,11 +33,33 @@ public abstract class MinecraftClientMixin {
       }
    }
 
+   /** During an editor export the game's clock moves one video frame per captured frame (see ExportJob). */
+   @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(
+      method = "render",
+      at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/RenderTickCounter$Dynamic;beginRenderTick(JZ)I"),
+      require = 0
+   )
+   private int killclip$exportClock(net.minecraft.client.render.RenderTickCounter.Dynamic counter, long timeMillis, boolean tick,
+      com.llamalad7.mixinextras.injector.wrapoperation.Operation<Integer> original) {
+      return original.call(counter, dev.killclip.client.ExportJob.clock(timeMillis), tick);
+   }
+
+   /** Captures the finished picture just before it is shown, then draws the export bar on screen only. */
+   @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/Framebuffer;blitToScreen()V"), require = 0)
+   private void killclip$beforeBlit(boolean tick, CallbackInfo ci) {
+      KillClipperClient client = KillClipperClient.instance();
+      if (client != null) {
+         client.onFrameRendered((MinecraftClient)(Object)this);
+         dev.killclip.client.ExportJob.drawBar((MinecraftClient)(Object)this);
+      }
+   }
+
    @Inject(method = "render", at = @At("TAIL"))
    private void killclip$afterFrame(boolean tick, CallbackInfo ci) {
       KillClipperClient client = KillClipperClient.instance();
       if (client != null) {
-         client.onFrameRendered((MinecraftClient)(Object)this);
+         // Only when the frame was not shown (minimized window): then the capture above did not run.
+         client.onFrameRenderedIfMissed((MinecraftClient)(Object)this);
       }
    }
 }

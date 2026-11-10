@@ -77,6 +77,10 @@ public final class KillClipperClient implements ClientModInitializer {
    private static final List<Pattern> UNIVERSAL_RULES = ServerDefaults.UNIVERSAL.stream().map(rule -> Pattern.compile(rule, Pattern.CASE_INSENSITIVE)).toList();
    private List<Pattern> allServerRules = List.of();
    private long lastSelfDeathMs = Long.MIN_VALUE / 2;
+   /** When you last died (death screen or a death/lost chat line); clips never reach back past it. */
+   private long ownDeathMs = Long.MIN_VALUE / 2;
+   /** A clip saved because you died ends just before that death. */
+   private long clipEndLimitMs = Long.MAX_VALUE;
    /** A player hit this recently counts as killed if the match ends and you are sent away while alive. */
    private static final long MATCH_END_HIT_MS = 5000L;
    private static final double EXPLOSION_RANGE = 12.0;
@@ -178,6 +182,7 @@ public final class KillClipperClient implements ClientModInitializer {
          boolean dead = client.player != null && client.player.isDead();
          if (dead && !this.wasDead && !ReplayPlayer.playing() && client.world != null) {
             this.stats.death(this.host());
+            this.onOwnDeath("death screen");
          }
 
          this.wasDead = dead;
@@ -245,7 +250,19 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    /** Called by the render mixin after every frame. */
+   /** Set once this frame was captured, so the end-of-frame fallback doesn't capture it twice. */
+   private boolean capturedThisFrame;
+
+   public void onFrameRenderedIfMissed(MinecraftClient client) {
+      if (!this.capturedThisFrame) {
+         this.onFrameRendered(client);
+      }
+
+      this.capturedThisFrame = false;
+   }
+
    public void onFrameRendered(MinecraftClient client) {
+      this.capturedThisFrame = true;
       this.recorder.onFrameRendered(client, this.config, nowMs());
       if (!ReplayPlayer.playing()) {
          if (DEV_SPIN && client.player != null) {
@@ -297,6 +314,9 @@ public final class KillClipperClient implements ClientModInitializer {
             }
 
             kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
+            if (kill.isEmpty() && this.isOwnDeathLine(message, local, online)) {
+               this.onOwnDeath("chat");
+            }
          }
       }
    }
@@ -381,6 +401,47 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
+   private boolean isOwnDeathLine(Text message, String local, Set<String> online) {
+      if (this.hasOwnDeathTranslation(message, local)) {
+         return true;
+      }
+
+      String plain = message.getString();
+      return KillRules.isOwnDeath(plain, this.decoratedPatterns, local, online)
+         || KillRules.isOwnDeath(plain, this.allServerRules, local, online);
+   }
+
+   private boolean hasOwnDeathTranslation(Text text, String local) {
+      if (text.getContent() instanceof TranslatableTextContent translation) {
+         List<String> args = Arrays.stream(translation.getArgs()).map(arg -> arg instanceof Text component ? component.getString() : String.valueOf(arg)).toList();
+         if (KillRules.isOwnDeathTranslation(translation.getKey(), args, local)) {
+            return true;
+         }
+      }
+
+      return text.getSiblings().stream().anyMatch(sibling -> this.hasOwnDeathTranslation(sibling, local));
+   }
+
+   /**
+    * You died: kills before this get their clip now, ending just before the death, and later clips start after
+    * it, so a round you lost never shows up in a kill clip.
+    */
+   private void onOwnDeath(String source) {
+      long now = nowMs();
+      if (now - this.ownDeathMs < 1000L) {
+         return;
+      }
+
+      LOGGER.debug("Own death from {}", source);
+      this.ownDeathMs = now;
+      this.clipEndLimitMs = now - 200L;
+      try {
+         this.streaks.finish().ifPresent(this::saveStreakClip);
+      } finally {
+         this.clipEndLimitMs = Long.MAX_VALUE;
+      }
+   }
+
    private Optional<KillRules.Kill> findTranslation(Text text, String local, Set<String> online) {
       if (text.getContent() instanceof TranslatableTextContent translation) {
          List<String> args = Arrays.stream(translation.getArgs()).map(arg -> arg instanceof Text component ? component.getString() : String.valueOf(arg)).toList();
@@ -444,9 +505,13 @@ public final class KillClipperClient implements ClientModInitializer {
 
       String label = isStreak ? streak.kills() + "-kill-streak" : "kill";
       String title = isStreak ? streak.kills() + "-kill streak" : "Kill";
-      long to = streak.lastKillMs() + this.config.postRollMs;
+      // A clip saved because you died stops just before your death.
+      long to = Math.max(streak.lastKillMs() + 300L, Math.min(streak.lastKillMs() + this.config.postRollMs, this.clipEndLimitMs));
       // Clips are at most 2 minutes; a longer streak keeps its end.
       long from = Math.max(streak.firstKillMs() - this.config.preRollMs, to - MAX_CLIP_MS);
+      // Start after your last death (and respawn), so the round you lost isn't in the clip; keep 2 s before the kill.
+      long afterDeath = Math.max(this.ownDeathMs, this.lastSelfDeathMs) + 500L;
+      from = Math.max(from, Math.min(afterDeath, streak.firstKillMs() - 2000L));
       this.saveClip(from, to, streak.lastKillMs(), label, title, false);
    }
 
@@ -457,6 +522,7 @@ public final class KillClipperClient implements ClientModInitializer {
 
       // Claim the fight's replay log now: by the time the video is saved, a win may have moved you to the lobby.
       dev.killclip.core.ReplayLog.Hold replay = this.config.saveReplays ? ReplayCapture.hold(killMs) : null;
+      long videoLead = this.recorder.videoLeadMs(fromMs);
       this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), this.config.fileFormat, file -> {
          this.clipsSaved++;
          if (manual || this.config.feedback) {
@@ -464,7 +530,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          LOGGER.info("Saved clip {}", file);
-         this.saveReplay(replay, fromMs, toMs, file);
+         this.saveReplay(replay, fromMs, toMs, videoLead, file);
       }, error -> {
          if (replay != null) {
             replay.release();
@@ -612,7 +678,7 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
-   private void saveReplay(dev.killclip.core.ReplayLog.Hold replay, long fromMs, long toMs, String videoFile) {
+   private void saveReplay(dev.killclip.core.ReplayLog.Hold replay, long fromMs, long toMs, long videoLead, String videoFile) {
       if (replay == null) {
          if (this.config.saveReplays) {
             LOGGER.warn("Fight replay not saved: no server connection was recorded");
@@ -623,7 +689,7 @@ public final class KillClipperClient implements ClientModInitializer {
 
       int dot = videoFile.lastIndexOf('.');
       String name = dot > 0 ? videoFile.substring(0, dot) : videoFile;
-      ReplayCapture.save(replay, fromMs, toMs, this.config.clipsDir().resolve(name + ".kcreplay")).whenComplete((path, error) -> {
+      ReplayCapture.save(replay, fromMs, toMs, videoLead, this.config.clipsDir().resolve(name + ".kcreplay")).whenComplete((path, error) -> {
          if (error == null) {
             LOGGER.info("Saved fight replay {}", path.getFileName());
          } else {
@@ -632,53 +698,23 @@ public final class KillClipperClient implements ClientModInitializer {
       });
    }
 
-   boolean recorderRunning() {
-      return this.recorder.running();
-   }
-
    /** The FFmpeg the recorder uses, or null while it is still being unpacked. */
    public String ffmpeg() {
       return this.recorder.ffmpegPath(this.config);
    }
 
-   /** Saves an exported replay edit: the recorder captured it while it played. */
-   void exportEdit(long fromMs, long toMs, Path replay, String format, boolean vertical, java.util.function.Consumer<String> status) {
-      long length = toMs - fromMs;
-      if (length > this.config.effectiveBufferSeconds() * 1000L) {
-         String message = "Export failed: it is " + length / 1000L + " s but the buffer only keeps " + this.config.effectiveBufferSeconds() + " s. Raise Buffer in the settings.";
-         notify("✗ " + message, Formatting.RED);
-         status.accept(message);
-         return;
-      }
+   String encoderInUse() {
+      return this.recorder.encoderFor(this.config);
+   }
 
-      if (!this.recorder.running()) {
-         String message = "Export failed: recording is off or FFmpeg isn't running (see /killclip status).";
-         notify("✗ " + message, Formatting.RED);
-         status.accept(message);
-         return;
+   /** An editor export was saved: tell the player and open it (or its 9:16 copy once that is made). */
+   void onExportSaved(Path file, boolean vertical) {
+      notify("✓ Edited clip saved: Edited/" + file.getFileName(), Formatting.GREEN);
+      if (vertical) {
+         this.makeVertical(file, this.config.openAfterExport);
+      } else if (this.config.openAfterExport) {
+         openVideo(file);
       }
-
-      String name = replay.getFileName().toString().replace(".kcreplay", "");
-      status.accept("Saving the export...");
-      // No "saving" message on screen here: it would end up in the last frames of the export.
-      Path edited = this.config.editedDir();
-      this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), edited, format,
-         file -> {
-            Path saved = edited.resolve(file);
-            notify("✓ Edited clip saved: Edited/" + file, Formatting.GREEN);
-            ReplayPlayer.exportedFile = saved;
-            status.accept("Saved " + file + " in the Edited folder.");
-            if (vertical) {
-               // Show the 9:16 version once it is made: that is the one being exported for.
-               this.makeVertical(saved, this.config.openAfterExport);
-            } else if (this.config.openAfterExport) {
-               openVideo(saved);
-            }
-         },
-         error -> {
-            notify("✗ Export failed: " + error, Formatting.RED);
-            status.accept("Export failed: " + error);
-         });
    }
 
    /** Saves a 9:16 copy of a clip next to it (name_vertical.mp4). */

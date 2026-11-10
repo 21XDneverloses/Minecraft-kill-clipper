@@ -2,6 +2,7 @@ import dev.killclip.core.KillRules;
 import dev.killclip.core.ServerDefaults;
 import java.util.regex.Pattern;
 import dev.killclip.core.VanillaDeathMessages;
+import java.util.List;
 import java.util.Set;
 
 public final class DeathMessagesTest {
@@ -42,6 +43,20 @@ public final class DeathMessagesTest {
       }) {
          check(KillRules.guess(line, "Me", online.contains("Carl") ? online : Set.of("Me", "Bob", "Carl", "Locked_Gears")).isEmpty(), "guess ignores: " + line);
       }
+      for (String line : new String[] {
+         "Bob killed Me", "Me was killed by Bob", "Me died to Bob", "Me lost to Bob", "Bob destroyed you", "You were obliterated by Bob",
+         "You lost to Bob", "Bob killed you", "You died!", "Me fell from a high place", "Me got popped by Bob", "Bob won against Me", "Game over!"
+      }) {
+         check(KillRules.isOwnDeath(line, List.of(), "Me", online), "own death: " + line);
+      }
+      for (String line : new String[] {
+         "Me killed Bob", "Bob was killed by Me", "Bob lost to Me", "You obliterated Bob!", "Bob was demolished by you", "<Bob> Me died lol",
+         "Bob: you died", "Me has won the fight vs Bob", "Bob killed Carl", "Me joined the game"
+      }) {
+         check(!KillRules.isOwnDeath(line, List.of(), "Me", online), "not own death: " + line);
+      }
+      check(KillRules.isOwnDeathTranslation("death.attack.player", List.of("Me", "Bob"), "Me"), "vanilla own death");
+      check(!KillRules.isOwnDeathTranslation("death.attack.player", List.of("Bob", "Me"), "Me"), "vanilla kill is not own death");
       System.out.println("all DeathMessages checks passed");
    }
 

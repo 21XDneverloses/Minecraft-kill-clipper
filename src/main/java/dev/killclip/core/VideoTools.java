@@ -139,6 +139,87 @@ public final class VideoTools {
       throw new IOException("could not make the clip small enough to upload");
    }
 
+   /** One stretch of the source audio: [startSec, endSec) played at {@code speed}. */
+   public record AudioPart(double startSec, double endSec, double speed) {
+   }
+
+   /**
+    * Adds sound to a frame-by-frame export: the parts of {@code source}'s audio (the original clip) are cut,
+    * sped up or slowed down like the edit, joined, and put under {@code video}'s picture in {@code output}.
+    * Returns false when the source has no usable audio (then nothing is written).
+    */
+   public static boolean withAudio(String ffmpeg, Path video, Path source, List<AudioPart> parts, boolean hevc, Path output) throws IOException, InterruptedException {
+      if (parts.isEmpty() || !hasAudio(ffmpeg, source)) {
+         return false;
+      }
+
+      StringBuilder graph = new StringBuilder("[1:a]asetpts=PTS-STARTPTS");
+      if (parts.size() > 1) {
+         graph.append(",asplit=").append(parts.size());
+      }
+
+      for (int i = 0; i < parts.size(); i++) {
+         graph.append("[s").append(i).append(']');
+      }
+
+      graph.append(';');
+      for (int i = 0; i < parts.size(); i++) {
+         AudioPart part = parts.get(i);
+         graph.append("[s").append(i).append("]atrim=start=").append(seconds(part.startSec())).append(":end=").append(seconds(Math.max(part.startSec() + 0.001, part.endSec())))
+            .append(",asetpts=PTS-STARTPTS");
+         // atempo takes 0.5..100 per step: chain steps for slower speeds (0.25 = 0.5 x 0.5).
+         double speed = Math.max(0.125, part.speed());
+         while (speed < 0.5 - 1e-6) {
+            graph.append(",atempo=0.5");
+            speed /= 0.5;
+         }
+
+         if (Math.abs(speed - 1.0) > 1e-3) {
+            graph.append(",atempo=").append(String.format(Locale.ROOT, "%.4f", speed));
+         }
+
+         graph.append("[a").append(i).append("];");
+      }
+
+      for (int i = 0; i < parts.size(); i++) {
+         graph.append("[a").append(i).append(']');
+      }
+
+      graph.append("concat=n=").append(parts.size()).append(":v=0:a=1,apad[a]");
+      Files.deleteIfExists(output);
+      List<String> cmd = new ArrayList<>(List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-i", video.toString(), "-i", source.toString(), "-filter_complex", graph.toString(),
+         "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-shortest"));
+      String type = extension(output);
+      if (type.equals("mp4") || type.equals("mov")) {
+         cmd.addAll(List.of("-movflags", "+faststart"));
+         if (hevc) {
+            cmd.addAll(List.of("-tag:v", "hvc1"));
+         }
+      }
+
+      cmd.add(output.toString());
+      if (!run(cmd, 600L) || !Files.isRegularFile(output)) {
+         throw new IOException("FFmpeg could not add the sound to the export");
+      }
+
+      return true;
+   }
+
+   /** True when the file has an audio stream. */
+   public static boolean hasAudio(String ffmpeg, Path video) throws IOException, InterruptedException {
+      if (!Files.isRegularFile(video)) {
+         return false;
+      }
+
+      Process process = new ProcessBuilder(ffmpeg, "-hide_banner", "-nostdin", "-i", video.toString())
+         .redirectErrorStream(true)
+         .start();
+      String output = new String(process.getInputStream().readAllBytes());
+      process.waitFor(20L, TimeUnit.SECONDS);
+      return output.contains("Audio:");
+   }
+
    private static boolean run(List<String> command, long timeoutSeconds) throws IOException, InterruptedException {
       Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
       // Trims, 9:16 copies and Discord shrinks run on the CPU, often while you play: keep them behind the game.

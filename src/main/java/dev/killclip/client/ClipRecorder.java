@@ -101,6 +101,17 @@ public final class ClipRecorder {
       return this.bundledFfmpeg.getNow(null);
    }
 
+   /** See {@link ReplayBuffer#videoLeadMs}; 0 when nothing is recording. */
+   long videoLeadMs(long fromMs) {
+      ReplayBuffer current = this.buffer;
+      return current == null ? 0L : current.videoLeadMs(fromMs);
+   }
+
+   /** The video encoder recordings use: the chosen one, or the CPU encoder after a hardware encoder failed. */
+   String encoderFor(ClipConfig config) {
+      return config.encoder.equals(this.failedEncoder) ? "libx264" : config.encoder;
+   }
+
    private ReplayBuffer.Settings settingsFrom(ClipConfig config, String ffmpeg) {
       boolean gameAudio = "game".equals(config.audioSource) && GameAudioTap.active();
       String encoder = config.encoder.equals(this.failedEncoder) ? "libx264" : config.encoder;
@@ -137,6 +148,13 @@ public final class ClipRecorder {
    public void onFrameRendered(MinecraftClient client, ClipConfig config, long nowMs) {
       for (Runnable done = this.sent.poll(); done != null; done = this.sent.poll()) {
          done.run();
+      }
+
+      ExportJob job = ExportJob.active;
+      if (job != null) {
+         // While exporting, every frame goes to the export (the live recording just waits).
+         this.captureExport(client, config, job);
+         return;
       }
 
       if (!config.recording) {
@@ -250,6 +268,101 @@ public final class ClipRecorder {
 
          // The encoder thread reads the mapped memory directly, so the game thread never copies the frame.
          target.submitDirect(view.data(), due, () -> this.sent.add(() -> this.recycle(readback, view)));
+      }, 0);
+   }
+
+   private final java.util.ArrayDeque<GpuBuffer> exportReadbacks = new java.util.ArrayDeque<>();
+   private int exportInFlight;
+   private long exportReadbackSize;
+
+   /**
+    * Hands this frame to the export. When the encoder is still busy the frame is left out and the export clock
+    * stays put, so the game renders the same moment again: no frame is ever skipped or repeated in the video.
+    */
+   private void captureExport(MinecraftClient client, ClipConfig config, ExportJob job) {
+      if (job.failure != null) {
+         return;
+      }
+
+      Framebuffer framebuffer = client.getFramebuffer();
+      GpuTexture texture = framebuffer.getColorAttachment();
+      if (texture == null || texture.getFormat().pixelSize() != 4) {
+         return;
+      }
+
+      boolean gpu = this.useGpuConvert(client);
+      int width = gpu ? framebuffer.textureWidth & ~3 : framebuffer.textureWidth;
+      int height = gpu ? framebuffer.textureHeight & ~1 : framebuffer.textureHeight;
+      String ffmpeg = this.ffmpegPath(config);
+      if (width < 4 || height < 2 || ffmpeg == null) {
+         return;
+      }
+
+      if (job.video == null) {
+         try {
+            job.video = dev.killclip.core.ExportEncoder.start(ffmpeg, width, height, gpu, job.fps, job.outputHeight, job.encoder, job.quality, job.output);
+         } catch (IOException e) {
+            job.failure = "could not start FFmpeg: " + e.getMessage();
+            return;
+         }
+      }
+
+      dev.killclip.core.ExportEncoder video = job.video;
+      String failure = video.failure();
+      if (failure != null) {
+         job.failure = failure;
+         return;
+      }
+
+      if (this.exportInFlight >= 3 || !video.ready()) {
+         return;
+      }
+
+      GpuDevice device = RenderSystem.getDevice();
+      long size = video.frameBytes();
+      if (size != this.exportReadbackSize) {
+         this.exportReadbacks.forEach(GpuBuffer::close);
+         this.exportReadbacks.clear();
+         this.exportReadbackSize = size;
+      }
+
+      CommandEncoder encoder = device.createCommandEncoder();
+      GpuTexture source = texture;
+      if (gpu) {
+         try {
+            source = this.convertOnGpu(device, encoder, framebuffer, width, height);
+         } catch (RuntimeException e) {
+            KillClipperClient.LOGGER.warn("GPU colour conversion failed during export", e);
+            this.gpuConvert = Boolean.FALSE;
+            job.failure = "the GPU colour conversion failed; export again to use the CPU";
+            return;
+         }
+      }
+
+      GpuBuffer pooled = this.exportReadbacks.poll();
+      GpuBuffer readback = pooled != null ? pooled : device.createBuffer(() -> "KillClip export frame", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, size);
+      this.exportInFlight++;
+      job.frameCaptured();
+      encoder.copyTextureToBuffer(source, readback, 0L, () -> {
+         GpuBuffer.MappedView view;
+         try {
+            view = encoder.mapBuffer(readback, true, false);
+         } catch (RuntimeException e) {
+            job.failure = "could not read a frame back from the GPU";
+            this.exportInFlight--;
+            readback.close();
+            return;
+         }
+
+         video.write(view.data(), () -> this.sent.add(() -> {
+            this.exportInFlight--;
+            view.close();
+            if (readback.size() == this.exportReadbackSize && this.exportReadbacks.size() < 4) {
+               this.exportReadbacks.push(readback);
+            } else {
+               readback.close();
+            }
+         }));
       }, 0);
    }
 
