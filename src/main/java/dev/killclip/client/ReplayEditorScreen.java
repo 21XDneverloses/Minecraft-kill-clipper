@@ -471,7 +471,7 @@ final class ReplayEditorScreen extends Screen {
       if (ReplayPlayer.exportStatus.startsWith("Saved")) {
          int[] box = this.statusBox(status);
          if (click.x() >= box[0] && click.x() <= box[2] && click.y() >= box[1] && click.y() <= box[3]) {
-            KillClipperClient.instance().openClipsFolder();
+            KillClipperClient.instance().openEditedFolder();
             return true;
          }
       }

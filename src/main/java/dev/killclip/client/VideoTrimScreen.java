@@ -85,7 +85,7 @@ final class VideoTrimScreen extends Screen {
 
       String name = this.video.getFileName().toString();
       int dot = name.lastIndexOf('.');
-      Path output = this.video.resolveSibling((dot > 0 ? name.substring(0, dot) : name) + "_cut." + this.format);
+      Path output = KillClipperClient.instance().settings().editedDir().resolve((dot > 0 ? name.substring(0, dot) : name) + "_cut." + this.format);
       double from = this.start;
       double to = this.end;
       this.busy = true;
@@ -93,8 +93,12 @@ final class VideoTrimScreen extends Screen {
       CompletableFuture.runAsync(() -> {
          String result;
          try {
+            java.nio.file.Files.createDirectories(output.getParent());
             VideoTools.trim(ffmpeg, this.video, from, to, output);
-            result = "Saved " + output.getFileName();
+            result = "Saved " + output.getFileName() + " in the Edited folder";
+            if (KillClipperClient.instance().settings().openAfterExport) {
+               KillClipperClient.openVideo(output);
+            }
          } catch (Exception e) {
             result = "Export failed: " + e.getMessage();
          }

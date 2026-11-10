@@ -44,7 +44,8 @@ public final class ClipLibraryScreen extends Screen {
          return;
       }
 
-      try (Stream<Path> files = Files.list(dir)) {
+      Path edited = KillClipperClient.instance().settings().editedDir();
+      try (Stream<Path> files = Stream.concat(Files.list(dir), Files.isDirectory(edited) ? Files.list(edited) : Stream.empty())) {
          files.filter(Files::isRegularFile)
             .filter(f -> VideoTools.isVideo(f) || f.getFileName().toString().endsWith(".kcreplay") && findVideo(f) == null)
             .sorted(Comparator.comparingLong(ClipLibraryScreen::modified).reversed())

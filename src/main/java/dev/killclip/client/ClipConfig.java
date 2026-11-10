@@ -52,6 +52,8 @@ public final class ClipConfig {
    public int preRollMs = 5000;
    public int postRollMs = 2000;
    public String clipsFolder = "";
+   /** Opens a finished edit in your video player as soon as it is saved. */
+   public boolean openAfterExport = true;
    public String ffmpegPath = "";
    public boolean restrictToListedServers = false;
    public List<String> servers = ServerDefaults.hosts();
@@ -94,6 +96,11 @@ public final class ClipConfig {
 
    public Path clipsDir() {
       return this.clipsFolder.isBlank() ? FabricLoader.getInstance().getGameDir().resolve("killclips") : Path.of(this.clipsFolder);
+   }
+
+   /** Finished edits (editor exports and trimmed videos) go here, apart from the raw clips. */
+   public Path editedDir() {
+      return this.clipsDir().resolve("Edited");
    }
 
    public void validate() {

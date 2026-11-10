@@ -558,6 +558,15 @@ public final class KillClipperClient implements ClientModInitializer {
                ReplayPlayer.active().setMode(mode);
             } else {
                net.minecraft.entity.Entity cam = client.getCameraEntity();
+               if (client.world != null) {
+                  StringBuilder seen = new StringBuilder();
+                  for (net.minecraft.entity.Entity e : client.world.getEntities()) {
+                     seen.append(e.getClass().getSimpleName()).append('#').append(e.getId()).append('@').append(e.getBlockPos().toShortString()).append(' ');
+                  }
+
+                  LOGGER.info("KILLCLIP_DEVREPLAY {} entities: {} | {}", mode, client.worldRenderer.getEntitiesDebugString(), seen);
+               }
+
                LOGGER.info("KILLCLIP_DEVREPLAY {} camera={} at {} player at {} hud hidden {} perspective {}", mode, cam == null ? null : cam.getClass().getSimpleName(),
                   cam == null ? null : cam.getEntityPos(), client.player == null ? null : client.player.getEntityPos(), client.options.hudHidden, client.options.getPerspective());
                net.minecraft.client.util.ScreenshotRecorder.saveScreenshot(client.runDirectory, "replay-" + mode.name().toLowerCase() + ".png", client.getFramebuffer(), 1,
@@ -648,13 +657,18 @@ public final class KillClipperClient implements ClientModInitializer {
       String name = replay.getFileName().toString().replace(".kcreplay", "");
       status.accept("Saving the export...");
       // No "saving" message on screen here: it would end up in the last frames of the export.
-      this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), this.config.clipsDir(), format,
+      Path edited = this.config.editedDir();
+      this.recorder.save(fromMs, toMs, "edit_" + name.replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", ""), edited, format,
          file -> {
-            notify("✓ Edited clip saved: " + file, Formatting.GREEN);
-            ReplayPlayer.exportedFile = this.config.clipsDir().resolve(file);
-            status.accept("Saved " + file + " in your clips folder.");
+            Path saved = edited.resolve(file);
+            notify("✓ Edited clip saved: Edited/" + file, Formatting.GREEN);
+            ReplayPlayer.exportedFile = saved;
+            status.accept("Saved " + file + " in the Edited folder.");
             if (vertical) {
-               this.makeVertical(this.config.clipsDir().resolve(file));
+               // Show the 9:16 version once it is made: that is the one being exported for.
+               this.makeVertical(saved, this.config.openAfterExport);
+            } else if (this.config.openAfterExport) {
+               openVideo(saved);
             }
          },
          error -> {
@@ -665,6 +679,19 @@ public final class KillClipperClient implements ClientModInitializer {
 
    /** Saves a 9:16 copy of a clip next to it (name_vertical.mp4). */
    void makeVertical(Path clip) {
+      this.makeVertical(clip, false);
+   }
+
+   /** Opens a saved video in the system's video player. */
+   static void openVideo(Path file) {
+      try {
+         Util.getOperatingSystem().open(file);
+      } catch (Exception e) {
+         LOGGER.warn("Could not open {}: {}", file, e.getMessage());
+      }
+   }
+
+   void makeVertical(Path clip, boolean openWhenDone) {
       String ffmpeg = this.ffmpeg();
       if (ffmpeg == null) {
          return;
@@ -677,7 +704,12 @@ public final class KillClipperClient implements ClientModInitializer {
       java.util.concurrent.CompletableFuture.runAsync(() -> {
          try {
             dev.killclip.core.VideoTools.vertical(ffmpeg, clip, output);
-            MinecraftClient.getInstance().execute(() -> notify("✓ Vertical clip saved: " + output.getFileName(), Formatting.GREEN));
+            MinecraftClient.getInstance().execute(() -> {
+               notify("✓ Vertical clip saved: " + output.getFileName(), Formatting.GREEN);
+               if (openWhenDone) {
+                  openVideo(output);
+               }
+            });
          } catch (Exception e) {
             MinecraftClient.getInstance().execute(() -> notify("✗ Vertical clip failed: " + e.getMessage(), Formatting.RED));
          }
@@ -691,7 +723,14 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    public void openClipsFolder() {
-      Path dir = this.config.clipsDir();
+      this.openFolder(this.config.clipsDir());
+   }
+
+   public void openEditedFolder() {
+      this.openFolder(this.config.editedDir());
+   }
+
+   private void openFolder(Path dir) {
 
       try {
          Files.createDirectories(dir);
