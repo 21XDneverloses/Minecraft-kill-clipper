@@ -843,7 +843,8 @@ public final class ReplayPlayer {
       if (this.seekTargetMs >= 0L) {
          target = this.seekTargetMs;
          this.seekTargetMs = -1L;
-      } else if (this.paused || this.client.world == null && this.next > 0 && this.timeMs >= this.clipStartMs && this.worldLoaded) {
+      } else if (this.paused || this.client.world == null && this.next > 0 && this.timeMs >= this.clipStartMs && this.worldLoaded
+         || this.waitingToCapture()) {
          target = this.timeMs;
       } else {
          target = this.timeMs + 50L;
@@ -898,7 +899,7 @@ public final class ReplayPlayer {
       }
 
       if (this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.client.currentScreen == null
-         && this.timeMs >= this.clipStartMs + trim[0] && this.seekTargetMs < 0L) {
+         && this.timeMs >= this.clipStartMs + trim[0] && this.seekTargetMs < 0L && this.terrainReady()) {
          this.exportStartRealMs = System.nanoTime() / 1000000L;
          this.client.inGameHud.getChatHud().clear(false);
          this.startExportJob();
@@ -1030,6 +1031,11 @@ public final class ReplayPlayer {
     * of the fight, from the per-frame aim recording, so first person is as smooth as you played it.
     */
    public void onFrame(float tickProgress) {
+      if (!this.closed) {
+         this.moveFreeCameraFrame();
+         CullingCompat.keepVisible(this.client);
+      }
+
       ClientPlayerEntity player = this.client.player;
       if (this.lookTimes.length < 2 || player == null || this.client.world == null || this.closed) {
          return;
@@ -1288,7 +1294,26 @@ public final class ReplayPlayer {
          player.setSneaking((flags & 2) != 0);
          player.setSprinting((flags & 4) != 0);
          boolean swinging = (flags & 32) != 0;
-         if (swinging && swingTicks <= 1) {
+         int[] counts = null;
+         float cooldown = -1.0F;
+         int gearAt = buf.readerIndex();
+         // Newer records carry the exact swings after the gear; read the gear first to reach them.
+         for (int i = 0; i < ReplayCapture.SLOTS.length; i++) {
+            if ((changed & 1 << i) != 0) {
+               ItemStack.OPTIONAL_PACKET_CODEC.decode(buf);
+            }
+         }
+
+         if (buf.isReadable()) {
+            int packed = buf.readVarInt();
+            counts = new int[]{packed & 3, packed >> 2 & 3, packed >> 4 & 3, packed >> 6 & 3};
+            cooldown = buf.readFloat();
+         }
+
+         buf.readerIndex(gearAt);
+         if (counts != null) {
+            this.replayHands(player, counts, cooldown);
+         } else if (swinging && swingTicks <= 1) {
             Hand hand = (flags & 64) != 0 ? Hand.OFF_HAND : Hand.MAIN_HAND;
             player.handSwinging = true;
             player.handSwingTicks = -1;
@@ -1309,6 +1334,65 @@ public final class ReplayPlayer {
       } finally {
          buf.release();
       }
+   }
+
+   private long terrainWaitStartMs;
+
+   /** Before an export records its first frame, the replay holds still at the start while the world is drawn. */
+   private boolean waitingToCapture() {
+      return this.exporting() && this.exportStartRealMs == 0L && this.client.world != null && this.seekTargetMs < 0L
+         && this.timeMs >= this.clipStartMs + this.trim()[0];
+   }
+
+   /**
+    * True once the blocks around the camera are drawn (or after 3 s at most), so the video doesn't start with blocks
+    * and players popping in.
+    */
+   private boolean terrainReady() {
+      long now = System.nanoTime() / 1000000L;
+      if (this.terrainWaitStartMs == 0L) {
+         this.terrainWaitStartMs = now;
+      }
+
+      boolean done = now - this.terrainWaitStartMs > 3000L
+         || now - this.terrainWaitStartMs > 500L && this.client.worldRenderer.isTerrainRenderComplete();
+      if (done) {
+         this.terrainWaitStartMs = 0L;
+      }
+
+      return done;
+   }
+
+   private float lastCooldown = 1.0F;
+
+   /** Plays back your own recorded swings, item-use bobs and attack cooldown, like they looked in first person. */
+   private void replayHands(ClientPlayerEntity player, int[] counts, float cooldown) {
+      boolean seeking = this.fastForwarding;
+      if (!seeking) {
+         if (counts[0] > 0 || counts[1] > 0) {
+            Hand hand = counts[1] > 0 && counts[0] == 0 ? Hand.OFF_HAND : Hand.MAIN_HAND;
+            // The vanilla swing (it restarts only when the last one is half done, like when you played).
+            player.swingHand(hand, false);
+            if (this.stand != null) {
+               this.stand.swingHand(hand);
+            }
+         }
+
+         if (counts[2] > 0) {
+            this.client.gameRenderer.firstPersonRenderer.resetEquipProgress(Hand.MAIN_HAND);
+         }
+
+         if (counts[3] > 0) {
+            this.client.gameRenderer.firstPersonRenderer.resetEquipProgress(Hand.OFF_HAND);
+         }
+      }
+
+      if (cooldown >= 0.0F && cooldown + 0.05F < this.lastCooldown) {
+         // You attacked: the held item dips and comes back up, as it did for you.
+         player.resetTicksSinceLastAttack();
+      }
+
+      this.lastCooldown = cooldown >= 0.0F ? cooldown : 1.0F;
    }
 
    private void applyCamera() {
@@ -1357,30 +1441,43 @@ public final class ReplayPlayer {
 
    /** Spectator camera: WASD to move, Space up, Shift down, Ctrl faster. Mouse looks around. */
    private void moveFreeCamera() {
+      // Flying happens every frame in moveFreeCameraFrame; the tick only keeps the camera from sliding.
+      if (this.freeCamera != null) {
+         this.freeCamera.resetPosition();
+      }
+   }
+
+   private long lastCameraFrameNs;
+
+   /**
+    * Flies the spectator camera once per rendered frame, by the real time since the last frame. Moving it per game
+    * tick looked choppy, above all while the replay is paused in the editor (paused ticks aren't smoothed).
+    */
+   private void moveFreeCameraFrame() {
+      long now = System.nanoTime();
+      double seconds = this.lastCameraFrameNs == 0L ? 0.0 : Math.min(0.1, (now - this.lastCameraFrameNs) / 1.0E9);
+      this.lastCameraFrameNs = now;
       MarkerEntity camera = this.freeCamera;
       boolean screenAllows = this.client.currentScreen == null || this.client.currentScreen instanceof ReplayEditorScreen;
-      if (this.mode != CameraMode.SPECTATOR || camera == null || !screenAllows || this.exporting()) {
-         if (camera != null) {
-            camera.resetPosition();
-         }
-
+      if (this.mode != CameraMode.SPECTATOR || camera == null || !screenAllows || this.exporting() || seconds <= 0.0) {
          return;
       }
 
-      camera.resetPosition();
       double forward = (key(this.client.options.forwardKey) ? 1 : 0) - (key(this.client.options.backKey) ? 1 : 0);
       double strafe = (key(this.client.options.leftKey) ? 1 : 0) - (key(this.client.options.rightKey) ? 1 : 0);
       double up = (key(this.client.options.jumpKey) ? 1 : 0) - (key(this.client.options.sneakKey) ? 1 : 0);
-      double speed = key(this.client.options.sprintKey) ? 1.2 : 0.5;
       if (forward == 0 && strafe == 0 && up == 0) {
          return;
       }
 
+      // Blocks per second: 10, or 24 while sprinting.
+      double speed = (key(this.client.options.sprintKey) ? 24.0 : 10.0) * seconds;
       this.manualCamera = true;
       double yaw = Math.toRadians(camera.getYaw());
       double dx = (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) * speed;
       double dz = (Math.cos(yaw) * forward + Math.sin(yaw) * strafe) * speed;
       camera.setPosition(camera.getX() + dx, camera.getY() + up * speed, camera.getZ() + dz);
+      camera.resetPosition();
    }
 
    private boolean key(net.minecraft.client.option.KeyBinding binding) {

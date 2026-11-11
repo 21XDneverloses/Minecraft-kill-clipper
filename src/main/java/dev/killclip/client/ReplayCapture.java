@@ -211,6 +211,36 @@ public final class ReplayCapture {
    }
 
    /** Records the player's own state; call once per client tick. */
+   /** Own swings and hand "use" bobs since the last own-state record, two bits per hand for each. */
+   private static int swingMain;
+   private static int swingOff;
+   private static int useMain;
+   private static int useOff;
+
+   public static void onOwnSwing(net.minecraft.util.Hand hand) {
+      if (ReplayPlayer.playing()) {
+         return;
+      }
+
+      if (hand == net.minecraft.util.Hand.OFF_HAND) {
+         swingOff = Math.min(3, swingOff + 1);
+      } else {
+         swingMain = Math.min(3, swingMain + 1);
+      }
+   }
+
+   public static void onOwnUse(net.minecraft.util.Hand hand) {
+      if (ReplayPlayer.playing()) {
+         return;
+      }
+
+      if (hand == net.minecraft.util.Hand.OFF_HAND) {
+         useOff = Math.min(3, useOff + 1);
+      } else {
+         useMain = Math.min(3, useMain + 1);
+      }
+   }
+
    static void recordSelf(MinecraftClient client) {
       ReplayLog target;
       synchronized (LOCK) {
@@ -260,6 +290,11 @@ public final class ReplayCapture {
             }
          }
 
+         // Added in 1.11.5, after the gear so older versions still read the record: exact swings, hand "use"
+         // bobs and the attack cooldown that lowers your held item in first person.
+         buf.writeVarInt(swingMain | swingOff << 2 | useMain << 4 | useOff << 6);
+         buf.writeFloat(player.getAttackCooldownProgress(0.0F));
+         swingMain = swingOff = useMain = useOff = 0;
          byte[] data = new byte[buf.readableBytes()];
          buf.readBytes(data);
          target.append(nowMs(), ReplayLog.SELF, data);

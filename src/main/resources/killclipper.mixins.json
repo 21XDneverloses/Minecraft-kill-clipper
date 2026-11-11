@@ -10,7 +10,9 @@
     "GameRendererMixin",
     "MinecraftClientMixin",
     "SoundEngineMixin",
-    "ConnectScreenMixin"
+    "ConnectScreenMixin",
+    "HandSwingMixin",
+    "HeldItemRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
