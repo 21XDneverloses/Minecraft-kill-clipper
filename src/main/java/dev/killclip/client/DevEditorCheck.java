@@ -77,6 +77,22 @@ final class DevEditorCheck {
                }
             }
             case 7 -> {
+               if (Boolean.getBoolean("killclip.devStuckReplay")) {
+                  // A replay that never loads must give up by itself and say why in the clip list.
+                  if (now - stepAt < 25000L) {
+                     return;
+                  }
+
+                  shot(client, "editor-stuck.png");
+                  KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR stuck check: playing {}, screen {}", ReplayPlayer.playing(), client.currentScreen);
+                  ReplayPlayer.start(client, Path.of(FILE));
+                  net.minecraft.client.gui.screen.multiplayer.ConnectScreen.connect(client.currentScreen, client,
+                     net.minecraft.client.network.ServerAddress.parse("localhost:1"), new net.minecraft.client.network.ServerInfo("dev", "localhost:1", net.minecraft.client.network.ServerInfo.ServerType.OTHER), false, null);
+                  KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR after connect: playing {}", ReplayPlayer.playing());
+                  step = 99;
+                  return;
+               }
+
                ReplayPlayer replay = ReplayPlayer.active();
                if (replay == null || client.world == null || !(client.currentScreen instanceof ReplayEditorScreen)) {
                   return;

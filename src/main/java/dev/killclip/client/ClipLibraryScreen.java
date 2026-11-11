@@ -102,6 +102,12 @@ public final class ClipLibraryScreen extends Screen {
 
    @Override
    protected void init() {
+      String error = ReplayPlayer.openError;
+      if (error != null) {
+         ReplayPlayer.openError = null;
+         this.status = error;
+      }
+
       this.scan();
       // As many rows as fit above the buttons and the status line.
       int rows = Math.max(1, (this.height - 52 - 16 - 32) / 22);
@@ -234,6 +240,11 @@ public final class ClipLibraryScreen extends Screen {
 
    @Override
    public void close() {
+      if (ReplayPlayer.playing() && this.client.world == null) {
+         // Leaving the list while a replay is still opening cancels it.
+         ReplayPlayer.stop();
+      }
+
       this.client.setScreen(this.parent);
    }
 }

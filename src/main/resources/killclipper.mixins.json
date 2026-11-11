@@ -9,7 +9,8 @@
     "MouseMixin",
     "GameRendererMixin",
     "MinecraftClientMixin",
-    "SoundEngineMixin"
+    "SoundEngineMixin",
+    "ConnectScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -116,6 +116,15 @@ public final class ReplayPlayer {
    private long lastSelfTimeMs = -1L;
    private double[] lastSelfPose;
    private boolean closed;
+   /** Real time the replay was opened, to give up on one that never loads. */
+   private final long openedRealMs = System.nanoTime() / 1000000L;
+   private boolean worldLoaded;
+   private int decodeFailures;
+   private int handleFailures;
+   private String firstProblem;
+   /** Why the last replay could not be opened, shown in the clip list; null when there is nothing to say. */
+   static volatile String openError;
+   private static final boolean DEV_STUCK = Boolean.getBoolean("killclip.devStuckReplay");
    private boolean hidingHud;
    private boolean hudWasHidden;
    final ReplayEdit edit;
@@ -249,6 +258,39 @@ public final class ReplayPlayer {
       active = null;
       if (old != null) {
          old.close();
+      }
+   }
+
+   /**
+    * The player is joining a real server or world: the replay ends right away without touching the game, so it
+    * can never take over the camera, game mode or world of the real game.
+    */
+   public static void leaveForRealGame(String why) {
+      ReplayPlayer player = active;
+      if (player == null) {
+         return;
+      }
+
+      KillClipperClient.LOGGER.info("Replay closed: {}", why);
+      active = null;
+      player.closed = true;
+      player.restoreView();
+      player.channel.close();
+   }
+
+   private boolean ownsGame() {
+      return this.client.getNetworkHandler() != null && this.client.getNetworkHandler().getConnection() == this.connection;
+   }
+
+   private void giveUpLoading(String reason) {
+      String detail = this.firstProblem != null ? " (" + this.firstProblem + ")" : "";
+      openError = "The replay could not load: " + reason + detail + ".";
+      KillClipperClient.LOGGER.warn("Replay {} did not load: {}; state {}, {} of {} records read, {} undecodable, {} failed{}",
+         this.file.getFileName(), reason, this.state == null ? "none" : this.state.id(), this.next, this.entries.size(),
+         this.decodeFailures, this.handleFailures, detail);
+      leaveForRealGame("did not load");
+      if (this.client.currentScreen instanceof ClipLibraryScreen || this.client.world == null) {
+         this.client.setScreen(new ClipLibraryScreen(new net.minecraft.client.gui.screen.TitleScreen()));
       }
    }
 
@@ -702,6 +744,25 @@ public final class ReplayPlayer {
          return;
       }
 
+      if (this.client.world != null && !this.ownsGame()) {
+         // The game is in another world (a real server): this replay must not touch it.
+         if (this.worldLoaded || this.client.getNetworkHandler() != null) {
+            leaveForRealGame("the game is in another world");
+            return;
+         }
+      }
+
+      if (this.ownsGame() && this.client.world != null) {
+         if (!this.worldLoaded) {
+            KillClipperClient.LOGGER.info("Replay {} loaded after {} ms", this.file.getFileName(), System.nanoTime() / 1000000L - this.openedRealMs);
+         }
+
+         this.worldLoaded = true;
+      } else if (!this.worldLoaded && System.nanoTime() / 1000000L - this.openedRealMs > 30000L) {
+         this.giveUpLoading(this.next >= this.entries.size() ? "the recording has no world in it" : "the world did not open in 30 seconds");
+         return;
+      }
+
       if (this.client.world == null) {
          // Before the world exists the connection isn't ticked by the game.
          this.connection.tick();
@@ -1018,7 +1079,7 @@ public final class ReplayPlayer {
    @SuppressWarnings("unchecked")
    private void deliver(byte[] data) {
       NetworkState<?> current = this.state;
-      if (current == null) {
+      if (current == null || DEV_STUCK) {
          return;
       }
 
@@ -1026,6 +1087,8 @@ public final class ReplayPlayer {
       try {
          packet = (Packet<?>)((net.minecraft.network.codec.PacketCodec<ByteBuf, ?>)current.codec()).decode(Unpooled.wrappedBuffer(data));
       } catch (RuntimeException e) {
+         this.decodeFailures++;
+         this.note("a recorded packet could not be read in " + current.id() + ": " + e);
          return;
       }
 
@@ -1037,7 +1100,19 @@ public final class ReplayPlayer {
          this.channel.pipeline().fireChannelRead(packet);
          this.channel.checkException();
       } catch (Throwable e) {
+         this.handleFailures++;
+         this.note(packet.getPacketType() + " failed: " + e);
          KillClipperClient.LOGGER.debug("Replay packet {} failed", packet.getPacketType(), e);
+      }
+   }
+
+   private void note(String problem) {
+      if (this.firstProblem == null) {
+         this.firstProblem = problem;
+      }
+
+      if (this.decodeFailures + this.handleFailures <= 5) {
+         KillClipperClient.LOGGER.warn("Replay {}: {}", this.file.getFileName(), problem);
       }
    }
 
