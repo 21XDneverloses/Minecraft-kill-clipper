@@ -1,301 +1,369 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Kill Clipper is a Fabric mod for Minecraft 1.21.11 that automatically clips every kill and multi-kill streak. Built-in recorder, nothing else to install.">
-<meta property="og:title" content="Kill Clipper">
-<meta property="og:description" content="Every kill, clipped. A Fabric mod for Minecraft 1.21.11 PvP.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c1a26'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23d42a2a'/%3E%3C/svg%3E">
-<style>[hidden]{display:none!important}img{max-width:100%}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<meta name="description" content="Kill Clipper is a Fabric mod for Minecraft 1.21.11 that clips every kill and multi-kill streak, with a built-in replay editor. Nothing else to install.">
+<meta property="og:title" content="Kill Clipper"><meta property="og:description" content="Every kill, clipped. A Fabric mod for Minecraft 1.21.11 PvP with a built-in replay editor.">
+<meta name="theme-color" content="#0d0a14"><meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d0a14'/%3E%3Cpath d='M9 7v18M9 16l11-9M9 16l11 9' stroke='%23ff58c8' stroke-width='4' stroke-linecap='square' fill='none'/%3E%3C/svg%3E">
 <title>Kill Clipper</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
-<style>
-/* Layout: sticky nav routes between seven pages (hash routing); each page is one 1080px column. Home leads with a live clip demo. */
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Silkscreen&display=swap">
+<style>[hidden]{display:none!important}img{max-width:100%}
+/* Layout: one dark look set in the End. Sticky nav routes between eight pages; the home page leads with a playable replay-editor demo spanning the full 1180px column. */
 :root {
-  --bg: #f5f4f8;
-  --surface: #ffffff;
-  --sunken: #ecebf2;
-  --fg: #1c1a26;
-  --muted: #5d5a6e;
-  --line: #dcd9e6;
-  --accent: #b0177a;
-  --accent-ink: #ffffff;
-  --rec: #d42a2a;
-  --ok: #1d7a4a;
-  --screen: #120f1a;
-  --screen-fg: #f1eef8;
-  --screen-dim: #9c97b0;
-  --screen-accent: #f06bc4;
+  --bg: #0c0a12;
+  --bg2: #110e19;
+  --surface: #171421;
+  --surface2: #1f1b2c;
+  --line: #2c2639;
+  --fg: #f3effa;
+  --muted: #a8a2bd;
+  --dim: #756f8b;
+  --accent: #ff58c8;        /* end-crystal magenta */
+  --accent-ink: #1d0616;
+  --rec: #ff5252;
+  --ok: #62d98f;
+  --pov1: #62d98f;          /* editor track colours: 1st person, 3rd person, spectator, trim */
+  --pov3: #5aa9ff;
+  --povs: #ffa04d;
+  --trim: #ffd84d;
+  --endstone: #dcd7a2;
   --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #14121c; --surface: #1d1a28; --sunken: #262236; --fg: #ebe8f4; --muted: #a29eb6; --line: #332f44;
-    --accent: #f06bc4; --accent-ink: #1a0a14; --rec: #ff5b5b; --ok: #5fd39a; --screen: #0b0910;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #14121c; --surface: #1d1a28; --sunken: #262236; --fg: #ebe8f4; --muted: #a29eb6; --line: #332f44;
-  --accent: #f06bc4; --accent-ink: #1a0a14; --rec: #ff5b5b; --ok: #5fd39a; --screen: #0b0910;
+  --pixel: "Silkscreen", "JetBrains Mono", ui-monospace, monospace;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); margin: 0; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; color: var(--fg); font: 16px/1.6 var(--body);
+  background:
+    radial-gradient(1100px 560px at 78% -120px, rgba(255, 88, 200, .16), transparent 62%),
+    radial-gradient(900px 520px at -10% 80px, rgba(90, 169, 255, .08), transparent 60%),
+    var(--bg);
+  background-repeat: no-repeat;
+  -webkit-font-smoothing: antialiased;
+}
 .gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.inner { max-width: 1080px; margin: 0 auto; }
-h1, h2, h3 { font-family: var(--display); line-height: 1.12; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(2.5rem, 7vw, 4.2rem); font-weight: 700; letter-spacing: -.015em; }
+.inner { max-width: 1180px; margin: 0 auto; }
+h1, h2, h3, h4 { font-family: var(--display); line-height: 1.1; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.7rem, 7.2vw, 5rem); font-weight: 700; letter-spacing: -.02em; }
 h1 em { font-style: normal; color: var(--accent); }
-h2 { font-size: clamp(1.6rem, 4vw, 2.2rem); }
-h3 { font-size: 1.1rem; }
+.page-title { font-size: clamp(2.2rem, 5.4vw, 3.6rem); }
+h2 { font-size: clamp(1.7rem, 3.8vw, 2.5rem); letter-spacing: -.01em; }
+h3 { font-size: 1.15rem; }
 p { margin: 0; }
-a { color: var(--accent); }
-a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-code { font-family: var(--mono); font-size: .86em; background: var(--sunken); padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
-.eyebrow { font: 600 .74rem/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
-.sub { color: var(--muted); max-width: 62ch; font-size: 1.05rem; }
-.head { display: grid; gap: 12px; margin-bottom: 32px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code, kbd { font-family: var(--mono); font-size: .86em; background: var(--surface2); padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; color: var(--fg); white-space: nowrap; }
+.eyebrow { font: 400 .72rem/1 var(--pixel); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.sub { color: var(--muted); max-width: 62ch; font-size: 1.06rem; }
+.head { display: grid; gap: 14px; margin-bottom: 36px; }
+.muted { color: var(--muted); }
 
 /* Nav */
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
-nav.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--bg); border-bottom: 1px solid var(--line); }
-nav.top .inner { display: flex; align-items: center; gap: 18px; height: 62px; }
-.brand { display: flex; align-items: center; gap: 10px; font: 700 1.1rem/1 var(--display); color: var(--fg); text-decoration: none; margin-right: auto; white-space: nowrap; }
-.brand-mark { width: 26px; height: 26px; border-radius: 6px; background: var(--fg); display: grid; place-items: center; flex: none; }
-.brand-mark::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--rec); }
-.navlinks { display: flex; gap: 4px; }
-.navlinks a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .93rem; padding: 7px 10px; border-radius: 6px; }
-.navlinks a:hover { color: var(--fg); background: var(--sunken); }
-.navlinks a[aria-current="page"] { color: var(--fg); background: var(--sunken); }
-.menu-btn { display: none; background: var(--surface); border: 1px solid var(--line); color: var(--fg); border-radius: 8px; padding: 8px 12px; font: 600 .9rem/1 var(--body); cursor: pointer; }
-@media (max-width: 900px) {
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); }
+nav.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 19; background: rgba(12, 10, 18, .86); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+nav.top .inner { display: flex; align-items: center; gap: 14px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 1.12rem/1 var(--display); color: var(--fg); text-decoration: none; margin-right: auto; white-space: nowrap; }
+.brand-mark { width: 28px; height: 28px; border-radius: 6px; background: var(--fg); display: grid; place-items: center; flex: none; }
+.brand-mark::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--rec); }
+.navlinks { display: flex; gap: 2px; }
+.navlinks a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .93rem; padding: 8px 11px; border-radius: 6px; }
+.navlinks a:hover { color: var(--fg); background: var(--surface); }
+.navlinks a[aria-current="page"] { color: var(--fg); background: var(--surface2); }
+.menu-btn { display: none; background: var(--surface); border: 1px solid var(--line); color: var(--fg); border-radius: 8px; padding: 9px 13px; font: 600 .9rem/1 var(--body); cursor: pointer; }
+@media (max-width: 1000px) {
   .menu-btn { display: inline-flex; }
-  .navlinks { display: none; position: absolute; left: 0; right: 0; top: 62px; flex-direction: column; background: var(--bg); border-bottom: 1px solid var(--line); padding: 8px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px)); }
+  .navlinks { display: none; position: absolute; left: 0; right: 0; top: 64px; flex-direction: column; background: var(--bg); border-bottom: 1px solid var(--line); padding: 8px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); }
   .navlinks.open { display: flex; }
-  .navlinks a { padding: 11px 10px; font-size: 1rem; }
-  .nav-dl { display: none; }
+  .navlinks a { padding: 12px 10px; font-size: 1rem; }
 }
+@media (max-width: 480px) { .nav-dl { display: none; } }
 
 /* Buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 20px; border-radius: 8px; font: 600 1rem/1 var(--body); text-decoration: none; border: 1px solid var(--accent); cursor: pointer; transition: filter .12s ease, transform .12s ease; }
-.btn:hover { filter: brightness(1.08); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 13px 22px; border-radius: 7px; font: 600 1rem/1 var(--body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: filter .12s ease, transform .12s ease, background .12s ease; }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25), 0 10px 30px -12px rgba(255, 88, 200, .7); }
+.btn.primary:hover { filter: brightness(1.1); }
 .btn.ghost { color: var(--fg); background: var(--surface); border-color: var(--line); }
-.btn.sm { padding: 9px 14px; font-size: .9rem; }
-.btn.lg { padding: 15px 26px; font-size: 1.05rem; }
+.btn.ghost:hover { background: var(--surface2); }
+.btn.sm { padding: 10px 15px; font-size: .9rem; }
+.btn.lg { padding: 16px 28px; font-size: 1.06rem; }
 .btn svg { width: 18px; height: 18px; flex: none; }
-.cta { display: flex; flex-wrap: wrap; gap: 12px; }
-.meta { font: 400 .8rem/1.5 var(--mono); color: var(--muted); }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.meta { font: 400 .8rem/1.5 var(--mono); color: var(--dim); }
 
 /* Pages */
-.page { padding-block: 56px 72px; }
 .page[hidden] { display: none !important; }
-.band { padding-block: 56px; border-top: 1px solid var(--line); }
+.page-pad { padding-block: 64px 88px; }
+.band { padding-block: 72px; border-top: 1px solid var(--line); }
 
 /* Home hero */
-.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 48px; align-items: center; }
-@media (max-width: 900px) { .hero { grid-template-columns: 1fr; gap: 36px; } }
-.hero-copy { display: grid; gap: 22px; }
-.lede { font-size: 1.15rem; color: var(--muted); max-width: 52ch; }
-.newbar { display: inline-flex; align-items: center; gap: 10px; font-size: .88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px 6px 6px; text-decoration: none; justify-self: start; }
-.newbar b { font: 600 .7rem/1 var(--mono); letter-spacing: .08em; background: var(--accent); color: var(--accent-ink); padding: 5px 8px; border-radius: 999px; }
+.hero { padding-block: 56px 28px; }
+.hero-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 40px; align-items: end; }
+@media (max-width: 900px) { .hero-top { grid-template-columns: 1fr; gap: 28px; } }
+.hero-copy { display: grid; gap: 22px; justify-items: start; }
+.lede { font-size: 1.18rem; color: var(--muted); max-width: 54ch; }
+.newbar { display: inline-flex; align-items: center; gap: 10px; font-size: .88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px 5px 5px; text-decoration: none; max-width: 100%; }
+.newbar b { font: 400 .66rem/1 var(--pixel); letter-spacing: .06em; background: var(--accent); color: var(--accent-ink); padding: 6px 8px; border-radius: 999px; flex: none; }
+.newbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.relcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 12px; }
+.relcard dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font: 400 .82rem/1.4 var(--mono); }
+.relcard dt { color: var(--dim); }
+.relcard dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.relcard .eyebrow { color: var(--muted); }
 
-/* Live demo */
-.demo { display: grid; gap: 12px; min-width: 0; }
-.viewer { background: var(--screen); color: var(--screen-fg); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px -24px rgba(20, 10, 30, .45); max-width: 100%; }
-.frame { position: relative; aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden;
-  background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,.55)), linear-gradient(180deg, #2a2440 0%, #3c2f56 46%, #2b4a35 46.2%, #1f3a29 100%); }
-.frame.cam3 { background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,.55)), linear-gradient(180deg, #2a2440 0%, #3c2f56 56%, #2b4a35 56.2%, #1f3a29 100%); }
-.frame.camS { background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,.55)), linear-gradient(180deg, #2a2440 0%, #3c2f56 30%, #2b4a35 30.2%, #1f3a29 100%); }
-.crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); }
-.crosshair::before, .crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.85); }
-.crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
-.crosshair::after { top: 8px; left: 0; height: 2px; width: 18px; }
-.crystal { position: absolute; left: 62%; top: 38%; width: 34px; height: 34px; transform: rotate(45deg); border: 3px solid var(--screen-accent); box-shadow: 0 0 22px var(--screen-accent); transition: opacity .3s; }
-.boom { position: absolute; left: calc(62% - 30px); top: calc(38% - 30px); width: 94px; height: 94px; border-radius: 50%; background: radial-gradient(circle, rgba(255,240,250,.95), rgba(240,107,196,.5) 45%, transparent 70%); opacity: 0; transform: scale(.4); transition: opacity .25s, transform .35s; }
-.boom.on { opacity: 1; transform: scale(1.2); }
-.hud-top { position: absolute; left: 14px; right: 14px; top: 12px; display: flex; justify-content: space-between; gap: 10px; font: 600 .7rem/1 var(--mono); letter-spacing: .08em; }
-.rec { display: inline-flex; align-items: center; gap: 7px; color: #ff6b6b; }
-.rec::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #ff4d4d; animation: blink 1.4s steps(1) infinite; }
-@keyframes blink { 50% { opacity: .25; } }
-.feed { position: absolute; right: 14px; top: 36px; display: grid; gap: 5px; justify-items: end; }
-.feed span { font: 500 .74rem/1 var(--body); background: rgba(0,0,0,.5); padding: 5px 8px; border-radius: 4px; animation: slide .3s ease-out; }
-.feed b { color: var(--screen-accent); font-weight: 600; }
+/* Editor demo */
+.editor { margin-top: 44px; background: #08060d; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 50px 120px -50px rgba(255, 88, 200, .45), 0 30px 60px -30px #000; }
+.ed-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg2); font: 400 .74rem/1 var(--mono); color: var(--muted); }
+.ed-bar .dots { display: flex; gap: 6px; }
+.ed-bar .dots i { width: 9px; height: 9px; border-radius: 2px; background: var(--line); }
+.ed-bar .dots i:first-child { background: var(--rec); }
+.ed-bar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-bar .tag { margin-left: auto; font: 400 .62rem/1 var(--pixel); letter-spacing: .08em; color: var(--accent); border: 1px solid var(--accent); padding: 4px 6px; border-radius: 3px; flex: none; }
+.viewport { position: relative; aspect-ratio: 16 / 9; max-width: 100%; max-height: 620px; width: 100%; background: linear-gradient(180deg, #0b0812 0%, #1a1230 52%, #8d8a66 52.2%, #5d5b44 100%); overflow: hidden; }
+.viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hud { position: absolute; pointer-events: none; }
+.v-feed { right: 14px; top: 14px; display: grid; gap: 5px; justify-items: end; }
+.v-feed span { font: 500 .78rem/1 var(--body); background: rgba(0, 0, 0, .55); padding: 6px 9px; border-radius: 4px; animation: slide .3s ease-out; }
+.v-feed b { color: var(--accent); font-weight: 600; }
 @keyframes slide { from { transform: translateX(14px); opacity: 0; } }
-.streak { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%) scale(.8); font: 700 clamp(1rem, 3.4vw, 1.6rem)/1 var(--display); letter-spacing: .12em; text-shadow: 0 0 18px var(--screen-accent); white-space: nowrap; opacity: 0; transition: opacity .25s, transform .25s; }
-.streak.on { opacity: 1; transform: translateX(-50%) scale(1); }
-.cam { position: absolute; left: 14px; bottom: 12px; font: 600 .7rem/1 var(--mono); background: rgba(0,0,0,.55); padding: 6px 8px; border-radius: 4px; opacity: 0; transition: opacity .25s; }
-.cam.on { opacity: 1; }
-.toast { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -40%); width: min(86%, 340px); background: rgba(14,11,20,.92); border: 1px solid #3a3350; border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; opacity: 0; transition: opacity .3s, transform .3s; }
-.toast.on { opacity: 1; transform: translate(-50%, -50%); }
-.toast strong { font: 600 .9rem/1.2 var(--body); color: #7ee2ad; }
-.toast span { font: 400 .7rem/1.4 var(--mono); color: var(--screen-dim); overflow-wrap: anywhere; }
-.bar { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; font: 400 .72rem/1 var(--mono); color: var(--screen-dim); font-variant-numeric: tabular-nums; }
-.track { position: relative; height: 6px; background: #2d2840; border-radius: 3px; }
-.track .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #5a4f78; border-radius: 3px; transition: width .2s linear; }
-.track .win { position: absolute; top: -3px; bottom: -3px; border: 1.5px solid var(--screen-accent); border-radius: 4px; opacity: 0; transition: opacity .3s; }
-.track .win.on { opacity: 1; }
-.track i { position: absolute; top: -4px; width: 3px; height: 14px; background: var(--screen-accent); border-radius: 2px; }
-.log { list-style: none; margin: 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 6px; font: 400 .78rem/1.4 var(--mono); min-height: 128px; }
-.log li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; color: var(--muted); animation: slide .3s ease-out; }
-.log li span:first-child { color: var(--accent); font-variant-numeric: tabular-nums; }
-.log li.ok span:last-child { color: var(--ok); }
-.demo-cap { font-size: .82rem; color: var(--muted); }
-@media (prefers-reduced-motion: reduce) { .rec::before, .feed span, .log li { animation: none; } .toast, .streak, .boom, .cam, .crystal { transition: none; } }
+.v-pov { left: 14px; top: 14px; font: 400 .66rem/1 var(--pixel); letter-spacing: .08em; padding: 7px 9px; border-radius: 4px; background: rgba(0, 0, 0, .6); display: flex; align-items: center; gap: 8px; }
+.v-pov i { width: 8px; height: 8px; border-radius: 2px; background: var(--pov1); }
+.v-fx { left: 14px; bottom: 14px; font: 600 .74rem/1 var(--mono); padding: 7px 9px; border-radius: 4px; background: rgba(0, 0, 0, .6); color: var(--trim); opacity: 0; transition: opacity .2s; }
+.v-fx.on { opacity: 1; }
+.v-banner { left: 50%; bottom: 17%; transform: translateX(-50%) scale(.85); font: 700 clamp(1.1rem, 3.6vw, 2.2rem)/1 var(--display); letter-spacing: .14em; text-shadow: 0 0 22px var(--accent), 0 2px 0 rgba(0, 0, 0, .5); white-space: nowrap; opacity: 0; transition: opacity .2s, transform .2s; }
+.v-banner.on { opacity: 1; transform: translateX(-50%) scale(1); }
+.v-cross { left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); }
+.v-cross::before, .v-cross::after { content: ""; position: absolute; background: rgba(255, 255, 255, .9); }
+.v-cross::before { left: 8px; top: 0; width: 2px; height: 18px; }
+.v-cross::after { top: 8px; left: 0; height: 2px; width: 18px; }
+.v-flash { inset: 0; background: #ffd9f4; opacity: 0; }
+.v-poster { inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; font: 600 1rem/1.4 var(--display); color: var(--fg); text-shadow: 0 2px 10px #000; }
+.ed-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; background: var(--bg2); border-top: 1px solid var(--line); }
+.ed-play { width: 38px; height: 38px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface2); color: var(--fg); cursor: pointer; display: grid; place-items: center; flex: none; }
+.ed-play svg { width: 16px; height: 16px; }
+.ed-time { font: 600 .82rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 92px; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { font: 600 .82rem/1 var(--body); padding: 8px 12px; border-radius: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.seg button i { width: 8px; height: 8px; border-radius: 2px; }
+.seg button[aria-pressed="true"] { background: var(--surface2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.ed-hint { margin-left: auto; font-size: .82rem; color: var(--dim); }
+@media (max-width: 720px) { .ed-hint { display: none; } }
+.tracks { position: relative; padding: 12px 14px 16px; background: #0a0810; border-top: 1px solid var(--line); display: grid; gap: 7px; cursor: pointer; touch-action: none; }
+.trow { display: grid; grid-template-columns: 62px 1fr; gap: 10px; align-items: center; }
+.trow > span { font: 400 .6rem/1 var(--pixel); letter-spacing: .08em; color: var(--dim); }
+.tlane { position: relative; height: 22px; border-radius: 4px; background: #15121e; }
+.tlane.thin { height: 12px; }
+.clipbar { position: absolute; left: 3%; right: 3%; top: 0; bottom: 0; border-radius: 3px; background: repeating-linear-gradient(90deg, #2b2540 0 7px, #332c4b 7px 14px); border-left: 4px solid var(--trim); border-right: 4px solid var(--trim); }
+.kmark { position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.cseg { position: absolute; top: 0; bottom: 0; border-radius: 3px; font: 400 .56rem/22px var(--pixel); letter-spacing: .06em; color: #0b0812; padding-left: 7px; overflow: hidden; white-space: nowrap; }
+.sseg { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--trim); opacity: .85; }
+.kf { position: absolute; top: 50%; width: 8px; height: 8px; background: #fff; transform: translate(-50%, -50%) rotate(45deg); }
+.playhead { position: absolute; top: 6px; bottom: 8px; width: 2px; background: #fff; pointer-events: none; left: 0; }
+.playhead::before { content: ""; position: absolute; left: -5px; top: -2px; border: 6px solid transparent; border-top-color: #fff; }
+.demo-cap { margin-top: 14px; font-size: .88rem; color: var(--dim); }
 
-/* Stats strip */
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+/* Stat strip */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 24px; }
 @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.stat { display: grid; gap: 4px; }
-.stat b { font: 700 1.8rem/1 var(--display); font-variant-numeric: tabular-nums; }
-.stat span { color: var(--muted); font-size: .9rem; }
+.stat { display: grid; gap: 6px; border-left: 2px solid var(--line); padding-left: 16px; }
+.stat b { font: 700 2.1rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: .92rem; }
 
-/* Flow + cards */
-.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; counter-reset: f; }
-@media (max-width: 800px) { .flow { grid-template-columns: 1fr; } }
-.flow li { counter-increment: f; display: grid; gap: 8px; align-content: start; }
-.flow li::before { content: "0" counter(f); font: 700 .9rem/1 var(--mono); color: var(--accent); }
-.flow p { color: var(--muted); }
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
-.card { display: grid; gap: 8px; align-content: start; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
-.card p { color: var(--muted); font-size: .95rem; }
-.ico { width: 34px; height: 34px; border-radius: 8px; background: var(--sunken); display: grid; place-items: center; color: var(--accent); }
-.ico svg { width: 18px; height: 18px; }
-.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+/* How it works */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; counter-reset: f; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+@media (max-width: 900px) { .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .flow { grid-template-columns: 1fr; } }
+.flow li { counter-increment: f; display: grid; gap: 10px; align-content: start; padding: 26px 22px; box-shadow: 1px 0 0 var(--line), 0 1px 0 var(--line); }
+.flow li::before { content: "0" counter(f); font: 400 .8rem/1 var(--pixel); color: var(--accent); }
+.flow p { color: var(--muted); font-size: .96rem; }
+
+/* Bento */
+.bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.tile { grid-column: span 2; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.tile.w3 { grid-column: span 3; }
+.tile.w4 { grid-column: span 4; }
+@media (max-width: 960px) { .tile, .tile.w3, .tile.w4 { grid-column: span 3; } }
+@media (max-width: 620px) { .tile, .tile.w3, .tile.w4 { grid-column: span 6; } }
+.tile p { color: var(--muted); font-size: .97rem; }
+.tile .viz { margin-top: 8px; }
+.tile a.more { font-weight: 600; font-size: .92rem; text-decoration: none; }
+.viz-streak { position: relative; height: 54px; }
+.viz-streak .lane { position: absolute; left: 0; right: 0; top: 30px; height: 10px; border-radius: 3px; background: #15121e; }
+.viz-streak .clip { position: absolute; left: 24%; right: 14%; top: 30px; height: 10px; border-radius: 3px; background: var(--accent); opacity: .35; }
+.viz-streak i { position: absolute; top: 24px; width: 3px; height: 22px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.viz-streak b { position: absolute; left: 24%; top: 0; font: 400 .62rem/1 var(--pixel); letter-spacing: .06em; color: var(--accent); }
+.viz-chat { display: grid; gap: 6px; font: 400 .8rem/1.3 var(--mono); }
+.viz-chat div { display: flex; justify-content: space-between; gap: 12px; background: #110e19; border-radius: 6px; padding: 8px 10px; }
+.viz-chat span { min-width: 0; overflow-wrap: anywhere; }
+.viz-chat em { font: 400 .58rem/1.6 var(--pixel); font-style: normal; letter-spacing: .06em; flex: none; }
+.viz-chat .y em { color: var(--ok); }
+.viz-chat .n { color: var(--dim); }
+.viz-chat .n em { color: var(--dim); }
+.viz-kd { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.viz-kd div { background: #110e19; border-radius: 8px; padding: 12px; display: grid; gap: 4px; }
+.viz-kd b { font: 700 1.5rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.viz-kd span { font: 400 .58rem/1.2 var(--pixel); letter-spacing: .06em; color: var(--dim); }
+.viz-wave { display: flex; align-items: center; gap: 3px; height: 44px; }
+.viz-wave i { flex: 1; background: var(--pov3); border-radius: 2px; opacity: .8; }
+.viz-fps { display: flex; align-items: baseline; gap: 10px; }
+.viz-fps b { font: 700 3rem/1 var(--display); color: var(--ok); }
+.viz-fps span { color: var(--muted); font: 400 .8rem/1.3 var(--mono); }
+.viz-share { display: flex; gap: 14px; align-items: center; }
+.phone { width: 54px; aspect-ratio: 9 / 16; border-radius: 8px; border: 2px solid var(--line); background: linear-gradient(180deg, #1a1230 55%, #8d8a66 55%); flex: none; position: relative; }
+.phone::after { content: ""; position: absolute; left: 50%; top: 42%; width: 10px; height: 10px; transform: translate(-50%, -50%) rotate(45deg); border: 2px solid var(--accent); box-shadow: 0 0 10px var(--accent); }
+.pill { font: 600 .78rem/1 var(--mono); background: #110e19; border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; color: var(--ok); }
+.label-ex { font: 400 .56rem/1 var(--pixel); letter-spacing: .08em; color: var(--dim); }
+
+/* CTA band */
+.endcta { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; background: linear-gradient(120deg, rgba(255, 88, 200, .16), rgba(90, 169, 255, .08)), var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 36px; }
+@media (max-width: 760px) { .endcta { grid-template-columns: 1fr; padding: 26px; } }
+.endcta p { color: var(--muted); margin-top: 10px; max-width: 56ch; }
+
+/* Feature groups */
+.fgroup { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px 48px; padding-block: 36px; border-top: 1px solid var(--line); }
+@media (max-width: 820px) { .fgroup { grid-template-columns: 1fr; } }
+.fgroup > div:first-child { display: grid; gap: 10px; align-content: start; }
+.flist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 36px; }
+@media (max-width: 620px) { .flist { grid-template-columns: 1fr; } }
+.flist li { display: grid; gap: 4px; align-content: start; }
+.flist b { font: 600 1rem/1.3 var(--display); }
+.flist span { color: var(--muted); font-size: .95rem; }
+
+/* Split + checks */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 44px; align-items: start; }
 @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
-.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
 .checks li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; color: var(--muted); }
 .checks li::before { content: "✓"; color: var(--ok); font-weight: 700; }
 .checks b { color: var(--fg); font-weight: 600; }
 
+/* Tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font: 400 .62rem/1 var(--pixel); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+td:first-child { white-space: nowrap; }
+td { color: var(--muted); }
+td:first-child { color: var(--fg); }
+
 /* Download */
-.dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
-@media (max-width: 720px) { .dl { grid-template-columns: 1fr; } }
-.dl-info { display: grid; gap: 12px; min-width: 0; }
-.dl-file { font: 600 1.15rem/1.2 var(--mono); overflow-wrap: anywhere; }
+.dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+@media (max-width: 760px) { .dl { grid-template-columns: 1fr; } }
+.dl-info { display: grid; gap: 14px; min-width: 0; }
+.dl-file { font: 600 1.3rem/1.2 var(--mono); overflow-wrap: anywhere; }
 .facts { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { font: 500 .78rem/1 var(--mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
-.hash { display: flex; gap: 8px; align-items: center; min-width: 0; font: 400 .76rem/1.4 var(--mono); color: var(--muted); }
-.hash code { flex: 1; min-width: 0; background: transparent; padding: 0; overflow-wrap: anywhere; }
-.copy { font: 600 .74rem/1 var(--body); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; flex: none; }
-.dl-actions { display: grid; gap: 8px; }
-.dl-note { font-size: .82rem; color: var(--muted); text-align: center; }
-.reqbox { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; display: grid; gap: 14px; }
+.chip { font: 500 .78rem/1 var(--mono); padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg2); }
+.hash { display: flex; gap: 10px; align-items: center; min-width: 0; font: 400 .76rem/1.4 var(--mono); color: var(--dim); }
+.hash code { flex: 1; min-width: 0; background: transparent; padding: 0; overflow-wrap: anywhere; color: var(--muted); }
+.copy { font: 600 .74rem/1 var(--body); padding: 7px 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg2); color: var(--fg); cursor: pointer; flex: none; }
+.dl-actions { display: grid; gap: 10px; }
+.dl-note { font-size: .84rem; color: var(--muted); text-align: center; }
+.reqbox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 16px; }
 .reqbox dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; font-size: .95rem; }
-.reqbox dt { color: var(--muted); }
+.reqbox dt { color: var(--dim); }
 .reqbox dd { margin: 0; font-weight: 500; }
+.callout { border-left: 3px solid var(--trim); background: var(--surface); border-radius: 0 10px 10px 0; padding: 14px 16px; color: var(--muted); font-size: .95rem; }
+.callout b { color: var(--fg); }
 
 /* Install */
-.launchers { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
-.launchers button { font: 600 .92rem/1 var(--body); padding: 11px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.launchers { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; }
+.launchers button { font: 600 .93rem/1 var(--body); padding: 12px 17px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
 .launchers button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-.guide { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.guide { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 44px; align-items: start; }
 @media (max-width: 860px) { .guide { grid-template-columns: 1fr; } }
-.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; counter-reset: s; }
-.steps li { display: grid; grid-template-columns: 34px 1fr; gap: 14px; counter-increment: s; }
-.steps li::before { content: counter(s); font: 700 .95rem/34px var(--display); text-align: center; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); }
-.steps li > div { min-width: 0; display: grid; gap: 4px; padding-top: 4px; }
-.steps p { color: var(--muted); font-size: .95rem; }
-.path { font: 500 .82rem/1.5 var(--mono); color: var(--fg); }
-.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-table { border-collapse: collapse; width: 100%; font-size: .94rem; }
-th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
-tr:last-child td { border-bottom: 0; }
-th { font: 600 .72rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-td:first-child { white-space: nowrap; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 36px 1fr; gap: 16px; counter-increment: s; }
+.steps li::before { content: counter(s); font: 400 .8rem/36px var(--pixel); text-align: center; width: 36px; height: 36px; border-radius: 7px; background: var(--surface2); border: 1px solid var(--line); color: var(--accent); }
+.steps li > div { min-width: 0; display: grid; gap: 4px; padding-top: 5px; }
+.steps p { color: var(--muted); font-size: .96rem; }
 
 /* Support */
-form.ticket { display: grid; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+form.ticket { display: grid; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px; }
 .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field label { font-weight: 600; font-size: .92rem; }
-.field .hint { font-size: .82rem; color: var(--muted); }
-input, select, textarea { font: 400 .95rem/1.4 var(--body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0; }
+.field .hint { font-size: .82rem; color: var(--dim); }
+input, select, textarea { font: 400 .95rem/1.4 var(--body); color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; width: 100%; min-width: 0; }
 textarea { min-height: 120px; resize: vertical; }
 textarea.mono { font-family: var(--mono); font-size: .82rem; min-height: 90px; }
+::placeholder { color: var(--dim); }
 .err { color: var(--rec); font-size: .85rem; }
-.ready { display: grid; gap: 14px; background: var(--surface); border: 1.5px solid var(--ok); border-radius: 14px; padding: 24px; }
+.ready { display: grid; gap: 14px; background: var(--surface); border: 1.5px solid var(--ok); border-radius: 16px; padding: 26px; }
 .ready h3 { color: var(--ok); }
-.ready pre { margin: 0; max-height: 220px; overflow: auto; background: var(--sunken); border-radius: 8px; padding: 12px; font: 400 .78rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ready pre { margin: 0; max-height: 220px; overflow: auto; background: var(--bg2); border-radius: 8px; padding: 12px; font: 400 .78rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .tid { font: 600 .9rem/1 var(--mono); }
 .faq { border-top: 1px solid var(--line); }
 details { border-bottom: 1px solid var(--line); }
-summary { list-style: none; cursor: pointer; padding: 16px 0; display: flex; gap: 14px; align-items: baseline; }
+summary { list-style: none; cursor: pointer; padding: 17px 0; display: flex; gap: 14px; align-items: baseline; }
 summary::-webkit-details-marker { display: none; }
-summary::after { content: "+"; margin-left: auto; font: 400 1.2rem/1 var(--mono); color: var(--muted); }
+summary::after { content: "+"; margin-left: auto; font: 400 1.2rem/1 var(--mono); color: var(--dim); }
 details[open] > summary::after { content: "–"; }
 .faq summary { font-weight: 600; }
 .faq details > p { padding: 0 0 18px; color: var(--muted); max-width: 66ch; }
 
 /* Team */
-.founder { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
-@media (max-width: 760px) { .founder { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
-.skin-stage { width: 300px; max-width: 100%; aspect-ratio: 3 / 4; border-radius: 12px; background: radial-gradient(ellipse at 50% 85%, var(--sunken), transparent 70%), var(--bg); display: grid; place-items: center; position: relative; overflow: hidden; }
+.founder { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 44px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 30px; }
+@media (max-width: 780px) { .founder { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+.skin-stage { width: 320px; max-width: 100%; aspect-ratio: 3 / 4; border-radius: 12px; background: radial-gradient(ellipse at 50% 88%, rgba(220, 215, 162, .28), transparent 62%), radial-gradient(ellipse at 50% 20%, rgba(255, 88, 200, .18), transparent 60%), #0a0810; display: grid; place-items: center; position: relative; overflow: hidden; border: 1px solid var(--line); }
 .skin-stage canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .skin-stage img { width: 46%; image-rendering: pixelated; }
-.skin-hint { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font: 400 .72rem/1 var(--mono); color: var(--muted); }
-.founder-info { display: grid; gap: 14px; justify-items: start; }
-@media (max-width: 760px) { .founder-info { justify-items: center; } }
-.ign { display: flex; align-items: center; gap: 12px; }
-.ign img { width: 40px; height: 40px; image-rendering: pixelated; border-radius: 6px; }
-.ign h2 { font-size: 2rem; }
-.role { font: 600 .74rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); padding: 6px 10px; border-radius: 999px; }
+.skin-hint { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font: 400 .58rem/1 var(--pixel); letter-spacing: .08em; color: var(--dim); }
+.founder-info { display: grid; gap: 16px; justify-items: start; }
+@media (max-width: 780px) { .founder-info { justify-items: center; } }
+.ign { display: flex; align-items: center; gap: 14px; }
+.ign img { width: 46px; height: 46px; image-rendering: pixelated; border-radius: 6px; }
+.ign h2 { font-size: 2.4rem; }
+.role { font: 400 .62rem/1 var(--pixel); letter-spacing: .08em; color: var(--accent-ink); background: var(--accent); padding: 7px 10px; border-radius: 4px; }
 .founder-info p { color: var(--muted); max-width: 56ch; }
 .servers { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Changelog */
-.list { border-top: 1px solid var(--line); max-width: 860px; }
-.ver { font: 700 1.05rem/1 var(--display); color: var(--accent); font-variant-numeric: tabular-nums; min-width: 52px; }
+.list { border-top: 1px solid var(--line); max-width: 880px; }
+.ver { font: 700 1.08rem/1 var(--display); color: var(--accent); font-variant-numeric: tabular-nums; min-width: 64px; }
 .sum { font-weight: 500; min-width: 0; }
-.time { font: 400 .76rem/1 var(--mono); color: var(--muted); white-space: nowrap; }
-.latest { font: 600 .66rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); padding: 3px 6px; border-radius: 4px; margin-left: 8px; vertical-align: 2px; }
-.cl details ul { margin: 0 0 14px; padding-left: 86px; display: grid; gap: 6px; color: var(--muted); font-size: .95rem; }
-.cl details ul li::marker { color: var(--accent); }
-.cl .full { display: block; padding-left: 66px; margin: 0 0 18px; font-size: .86rem; }
-@media (max-width: 560px) {
+.time { font: 400 .76rem/1 var(--mono); color: var(--dim); white-space: nowrap; }
+.latest { font: 400 .56rem/1 var(--pixel); letter-spacing: .08em; background: var(--accent); color: var(--accent-ink); padding: 4px 6px; border-radius: 3px; margin-left: 9px; vertical-align: 2px; }
+.cl .notes { padding: 0 0 20px 78px; display: grid; gap: 10px; color: var(--muted); font-size: .95rem; max-width: 780px; }
+.cl .notes h4 { font: 600 .98rem/1.3 var(--display); color: var(--fg); margin-top: 6px; }
+.cl .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.cl .notes li.sub { margin-left: 18px; list-style: circle; }
+.cl .notes li::marker { color: var(--accent); }
+.cl .notes b { color: var(--fg); font-weight: 600; }
+.cl .notes .full { font-size: .86rem; }
+@media (max-width: 600px) {
   .cl summary { flex-wrap: wrap; }
-  .cl .time { order: 3; width: 100%; padding-left: 66px; }
-  .cl details ul { padding-left: 20px; }
-  .cl .full { padding-left: 0; }
+  .cl .time { order: 3; width: 100%; padding-left: 78px; }
+  .cl .notes { padding-left: 0; }
 }
 
-.cl .notes { padding: 0 0 18px 66px; display: grid; gap: 10px; color: var(--muted); font-size: .95rem; max-width: 760px; }
-.cl .notes ul { margin: 0; padding-left: 20px !important; display: grid; gap: 6px; }
-.cl .notes .full { padding-left: 0; margin: 0; }
-@media (max-width: 560px) { .cl .notes { padding-left: 0; } }
-footer { border-top: 1px solid var(--line); padding-block: 32px 48px; font-size: .86rem; color: var(--muted); }
-footer .inner { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 24px 40px; }
+footer { border-top: 1px solid var(--line); padding-block: 40px 56px; font-size: .88rem; color: var(--muted); background: var(--bg2); }
+footer .inner { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); gap: 28px 40px; }
 @media (max-width: 700px) { footer .inner { grid-template-columns: 1fr; } }
-footer h4 { margin: 0 0 8px; font: 600 .72rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+footer h4 { margin: 0 0 10px; font: 400 .62rem/1 var(--pixel); letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
+footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
 footer a { color: var(--muted); text-decoration: none; }
 footer a:hover { color: var(--fg); }
-</style>
-</head>
-<body>
-
-
+@media (prefers-reduced-motion: reduce) { .v-feed span { animation: none; } .v-banner, .v-fx { transition: none; } }
+</style></head><body>
 <nav class="top gutter" aria-label="Main">
   <div class="inner">
     <a class="brand" href="#home"><span class="brand-mark" aria-hidden="true"></span>Kill Clipper</a>
     <div class="navlinks" id="navlinks">
-      <a href="#home" data-route="home">Home</a>
       <a href="#features" data-route="features">Features</a>
-      <a href="#get" data-route="get">Download</a>
+      <a href="#editor" data-route="editor">Clip Editor</a>
       <a href="#install" data-route="install">Install</a>
       <a href="#support" data-route="support">Support</a>
       <a href="#team" data-route="team">Team</a>
       <a href="#changelog" data-route="changelog">Changelog</a>
     </div>
-    <a class="btn primary sm nav-dl" data-dl href="#">Download</a>
+    <a class="btn primary sm nav-dl" href="#get">Download</a>
     <button class="menu-btn" id="menu-btn" type="button" aria-expanded="false" aria-controls="navlinks">Menu</button>
   </div>
 </nav>
@@ -303,52 +371,71 @@ footer a:hover { color: var(--fg); }
 <main>
 <!-- HOME -->
 <div class="page" data-page="home">
-  <div class="gutter"><div class="inner">
-    <div class="hero">
+  <div class="hero gutter"><div class="inner">
+    <div class="hero-top">
       <div class="hero-copy">
-        <a class="newbar" href="#changelog"><b>NEW</b>v1.5.1: smoother clips, better audio sync</a>
+        <a class="newbar" href="#changelog"><b>NEW</b><span>v1.11.5: Replays look like what you saw</span></a>
         <h1>Every kill, <em>clipped.</em></h1>
-        <p class="lede">Kill Clipper records your Minecraft PvP in the background and saves a video the moment you get a kill. Chain kills together and the whole streak saves as one clip. The recorder is built in, so there's nothing else to install.</p>
+        <p class="lede">Kill Clipper records your Minecraft PvP in the background and saves a video the moment you get a kill. Then rewatch the fight from any camera, add slow-mo, and share it. All inside the game, with nothing else to install.</p>
         <div class="cta">
-          <a class="btn primary" data-dl href="#">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
-            Download v1.5.1
+          <a class="btn primary lg" data-dl href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+            Download v1.11.5
           </a>
-          <a class="btn ghost" href="#install">Install guide</a>
+          <a class="btn ghost lg" href="#install">Install guide</a>
         </div>
-        <p class="meta">killclipper-1.5.1.jar · 114 MB · Fabric · Minecraft 1.21.11</p>
       </div>
+      <aside class="relcard" aria-label="Latest release">
+        <span class="eyebrow" data-reldate>Latest release · 11 Nov 2026</span>
+        <dl>
+          <dt>File</dt><dd>killclipper-1.11.5.jar</dd>
+          <dt>Game</dt><dd>Minecraft 1.21.11</dd>
+          <dt>Loader</dt><dd>Fabric 0.19.3+</dd>
+          <dt>Java</dt><dd>21 or newer</dd>
+          <dt>Size</dt><dd data-size>109 MB</dd>
+        </dl>
+      </aside>
+    </div>
 
-      <div class="demo" aria-label="Live demo of a double kill being clipped">
-        <figure class="viewer" style="margin:0">
-          <div class="frame" id="d-frame">
-            <div class="hud-top"><span class="rec" id="d-rec">REC</span><span id="d-spec">1080p · 120 FPS · NVIDIA H.265</span></div>
-            <div class="feed" id="d-feed"></div>
-            <div class="crystal" id="d-crystal" aria-hidden="true"></div>
-            <div class="boom" id="d-boom" aria-hidden="true"></div>
-            <div class="crosshair" id="d-cross" aria-hidden="true"></div>
-            <div class="streak" id="d-streak">DOUBLE KILL</div>
-            <div class="cam" id="d-cam">CLIP EDITOR · 1ST PERSON</div>
-            <div class="toast" id="d-toast"><strong>Clip saved</strong><span id="d-file">killclips/streak-2.mp4</span><span>1080p · 120 fps · H.265 · with fight replay</span></div>
-          </div>
-          <div class="bar">
-            <span id="d-buf">BUFFER AUTO 77 s</span>
-            <div class="track"><div class="fill" id="d-fill"></div><div class="win" id="d-win" style="left:28%;right:8%"></div><i id="d-k1" style="left:48%;display:none"></i><i id="d-k2" style="left:70%;display:none"></i></div>
-            <span id="d-time">00:00</span>
-          </div>
-        </figure>
-        <ol class="log" id="d-log" aria-live="off"></ol>
-        <p class="demo-cap">Simulated with v1.5.1 defaults: 10 s before the kill, Auto buffer, 2-kill streaks.</p>
+    <div class="editor" aria-label="Playable demo of the Clip Editor">
+      <div class="ed-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="file">Clip Editor · double-kill.kcreplay</span><span class="tag">LIVE DEMO</span></div>
+      <div class="viewport" id="viewport">
+        <canvas id="scene" aria-hidden="true"></canvas>
+        <div class="hud v-poster" id="v-poster" hidden>Replay demo needs WebGL. The real editor runs inside Minecraft.</div>
+        <div class="hud v-flash" id="v-flash"></div>
+        <div class="hud v-pov" id="v-pov"><i></i><span>1ST PERSON</span></div>
+        <div class="hud v-feed" id="v-feed"></div>
+        <div class="hud v-cross" id="v-cross" aria-hidden="true"></div>
+        <div class="hud v-banner" id="v-banner">DOUBLE KILL</div>
+        <div class="hud v-fx" id="v-fx">0.3x SLOW-MO · ZOOM 1.6x</div>
+      </div>
+      <div class="ed-controls">
+        <button class="ed-play" id="ed-play" type="button" aria-label="Pause"></button>
+        <span class="ed-time" id="ed-time">0:00.0 / 0:10.0</span>
+        <div class="seg" role="group" aria-label="Camera">
+          <button type="button" data-pov="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-pov="1" aria-pressed="false"><i style="background:var(--pov1)"></i>1st person</button>
+          <button type="button" data-pov="3" aria-pressed="false"><i style="background:var(--pov3)"></i>3rd person</button>
+          <button type="button" data-pov="S" aria-pressed="false"><i style="background:var(--povs)"></i>Spectator</button>
+        </div>
+        <span class="ed-hint">Pick a camera, or click the timeline to scrub.</span>
+      </div>
+      <div class="tracks" id="tracks">
+        <div class="trow"><span>CLIP</span><div class="tlane"><div class="clipbar"></div><i class="kmark" style="left:36%"></i><i class="kmark" style="left:65%"></i></div></div>
+        <div class="trow"><span>CAMERA</span><div class="tlane" id="camlane"></div></div>
+        <div class="trow"><span>SPEED</span><div class="tlane thin"><div class="sseg" style="left:62%;width:8%"></div></div></div>
+        <div class="playhead" id="playhead"></div>
       </div>
     </div>
+    <p class="demo-cap">A small copy of the in-game Clip Editor. The fight is a made-up example; the cameras, slow-mo and timeline work like the real thing.</p>
   </div></div>
 
   <div class="band gutter"><div class="inner">
     <div class="stats">
-      <div class="stat"><b>2 min</b><span>longest clip</span></div>
-      <div class="stat"><b>120 fps</b><span>at 1080p with NVIDIA H.265</span></div>
+      <div class="stat"><b>2 min</b><span>longest kill clip</span></div>
+      <div class="stat"><b>120 fps</b><span>recording at 1080p</span></div>
+      <div class="stat"><b>3</b><span>cameras to rewatch a fight from</span></div>
       <div class="stat"><b>0</b><span>extra programs to install</span></div>
-      <div class="stat"><b>~300 KB</b><span>replay data per minute</span></div>
     </div>
   </div></div>
 
@@ -356,61 +443,196 @@ footer a:hover { color: var(--fg); }
     <div class="head"><span class="eyebrow">How it works</span><h2>Play normally. The clips make themselves.</h2></div>
     <ol class="flow">
       <li><h3>It's always recording</h3><p>A rolling buffer keeps the last minute or two of gameplay on disk, not in memory, so it doesn't slow the game down.</p></li>
-      <li><h3>It spots your kill</h3><p>Kill messages, hits, crystals, anchors and beds are all checked. It works on any server without setup.</p></li>
-      <li><h3>It saves the clip</h3><p>The seconds before and after are saved as MP4, MOV or MKV. Kills in a row become one streak clip, up to 2 minutes.</p></li>
+      <li><h3>It spots your kill</h3><p>Kill messages, hits, crystals, anchors and beds are all checked. It works on any server with no setup.</p></li>
+      <li><h3>It saves the clip</h3><p>The seconds before and after are saved as a video. Kills in a row become one streak clip. Your deaths stay out.</p></li>
+      <li><h3>You edit and share</h3><p>Open the Clip Editor from the main menu, change cameras, add slow-mo, and get a link to paste in Discord.</p></li>
     </ol>
-    <div class="cta" style="margin-top:32px"><a class="btn ghost" href="#features">See all features</a></div>
+  </div></div>
+
+  <div class="band gutter"><div class="inner">
+    <div class="head"><span class="eyebrow">What you get</span><h2>Built for crystal PvP. Works everywhere.</h2></div>
+    <div class="bento">
+      <div class="tile w4">
+        <h3>Multi-kill streaks in one clip</h3>
+        <p>Kills inside the streak window save as a single longer clip, Valorant style. Two kills starts a streak by default, and you can change it.</p>
+        <div class="viz viz-streak" aria-hidden="true"><b>1 CLIP · 3 KILLS</b><div class="lane"></div><div class="clip"></div><i style="left:38%"></i><i style="left:55%"></i><i style="left:74%"></i></div>
+      </div>
+      <div class="tile">
+        <h3>Smooth at 120 fps</h3>
+        <p>Frames go from the graphics card straight to the encoder, so recording barely touches your game fps.</p>
+        <div class="viz viz-fps" aria-hidden="true"><b>120</b><span>fps · 1080p<br>NVIDIA H.265</span></div>
+      </div>
+      <div class="tile w3">
+        <h3>Knows a kill when it sees one</h3>
+        <p>Reads kill messages on any server, including custom wording. Lines where you died never count.</p>
+        <div class="viz viz-chat" aria-hidden="true">
+          <div class="y"><span>You popped xNova</span><em>CLIPPED</em></div>
+          <div class="y"><span>Kairo_ was obliterated by You</span><em>CLIPPED</em></div>
+          <div class="n"><span>You were killed by Kairo_</span><em>IGNORED</em></div>
+        </div>
+      </div>
+      <div class="tile w3">
+        <h3>A replay editor in the main menu</h3>
+        <p>Every clip keeps the fight itself, so you can watch it again in first person, third person or a free camera, then export a new video with sound.</p>
+        <a class="more" href="#editor">See the Clip Editor →</a>
+      </div>
+      <div class="tile">
+        <h3>Share with a link</h3>
+        <p>Get link uploads the clip and copies a link that plays right in Discord. There's a vertical 9:16 copy for Shorts and TikTok too.</p>
+        <div class="viz viz-share" aria-hidden="true"><span class="phone"></span><span class="pill">Link copied</span></div>
+      </div>
+      <div class="tile">
+        <h3>Game audio built in</h3>
+        <p>Records Minecraft's own sound by default. Switch to whole-computer audio or turn it off.</p>
+        <div class="viz viz-wave" aria-hidden="true" id="wave"></div>
+      </div>
+      <div class="tile">
+        <h3>Kill stats</h3>
+        <p>Kills, deaths, K/D and best streak for every server, saved only on your PC.</p>
+        <div class="viz viz-kd" aria-hidden="true"><div><b>2.4</b><span>K/D</span></div><div><b>5</b><span>BEST STREAK</span></div><div><b>312</b><span>KILLS</span></div></div>
+        <span class="label-ex">EXAMPLE NUMBERS</span>
+      </div>
+    </div>
+    <div class="cta" style="margin-top:28px"><a class="btn ghost" href="#features">All features</a></div>
+  </div></div>
+
+  <div class="band gutter"><div class="inner">
+    <div class="endcta">
+      <div><h2>Get your next kill on video</h2><p>One jar in your mods folder. Recording starts by itself the next time you join a server.</p></div>
+      <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.11.5</a><a class="btn ghost lg" href="#install">Install guide</a></div>
+    </div>
   </div></div>
 </div>
 
 <!-- FEATURES -->
-<div class="page gutter" data-page="features" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Features</span><h1>Built for crystal PvP, works everywhere</h1><p class="sub">Everything below is in v1.5.1.</p></div>
-  <div class="cards">
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></span><h3>Multi-kill streaks</h3><p>Kills inside the streak window save as one clip, Valorant style. Two kills starts a streak by default, and you can change it.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg></span><h3>Any server</h3><p>Knows mcpvp.club, PvPHQ and FlowPvP, and common formats everywhere. Custom wording like "obliterated" or "popped" is caught too. Lines where you died never count.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l8 10-8 10-8-10z"/></svg></span><h3>Crystal and indirect kills</h3><p>Crystals, respawn anchors, beds, arrows and tridents count as your hits. A player you damaged who dies in lava, the void or a fall within 10 seconds is your kill.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h3>Clips up to 2 minutes</h3><p>Before kill goes up to 30, 45, 60, 90 or 120 seconds. A long streak saves up to 2 minutes, ending at the last kill.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10v4M11 10v4M15 10v4"/></svg></span><h3>Auto buffer</h3><p>The buffer sizes itself from your clip settings. 10 s before the kill uses a 77 s buffer, 120 s uses 187 s. It's kept on disk, so it doesn't use memory.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg></span><h3>Built-in recorder</h3><p>FFmpeg is included for Windows, macOS and Linux. Choose NVIDIA H.265, NVIDIA H.264, Intel or CPU. Frames are converted on the GPU so your fps stays high.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 8a5 5 0 010 8"/></svg></span><h3>Game audio</h3><p>Records Minecraft's own sound by default. You can switch to whole-computer audio or turn sound off.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></svg></span><h3>Clip Editor</h3><p>Open it from the main menu. Rewatch a fight in first person, third person or a free spectator camera, add camera switches on a timeline, and export a new video.</p></div>
-    <div class="card"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 4v16M18 4v16M6 12h12"/></svg></span><h3>Trim any video</h3><p>Trim and convert MP4, MOV, MKV, AVI, WEBM and more, or import a video from anywhere on your PC into the clips folder.</p></div>
-  </div>
+<div class="page page-pad gutter" data-page="features" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Features</span><h1 class="page-title">Everything in Kill Clipper</h1><p class="sub">All of this is in v1.11.5.</p></div>
 
-  <div class="band" style="margin-top:56px">
-    <div class="split">
-      <div class="head" style="margin:0"><span class="eyebrow">Clip Editor</span><h2>Watch the fight from any angle</h2><p class="sub">Every clip saves a small fight replay next to the video. Open it from the Clip Editor button on the main menu.</p></div>
-      <ul class="checks">
-        <li><span><b>V</b> switches camera: first person, third person or free spectator.</span></li>
-        <li><span><b>P</b> pauses, <b>← / →</b> jump 5 s, <b>↑ / ↓</b> change speed.</span></li>
-        <li><span><b>E</b> opens the timeline. Add a switch at any moment; two spectator switches in a row fly the camera smoothly between them.</span></li>
-        <li><span><b>Export</b> saves a new MP4, MOV or MKV with your camera switches.</span></li>
-        <li><span>Fully offline. Playback has no server connection.</span></li>
-      </ul>
+  <div class="fgroup">
+    <div><h2>Clipping</h2><p class="muted">What gets saved, and when.</p></div>
+    <ul class="flist">
+      <li><b>Every kill</b><span>Each kill saves the seconds before and after it as a video.</span></li>
+      <li><b>Streaks as one clip</b><span>Kills inside the streak window (10 s by default) are grouped. Two or more counts as a streak.</span></li>
+      <li><b>Up to 2 minutes</b><span>Before-kill time goes from 5 to 120 seconds. A long streak saves up to 2 minutes, ending at the last kill.</span></li>
+      <li><b>Deaths stay out</b><span>When you die, kills before it are saved right away, ending just before the death. The next clip starts after it.</span></li>
+      <li><b>Auto buffer</b><span>The buffer sizes itself from your clip settings and lives on disk, so a long one doesn't use memory.</span></li>
+      <li><b>MP4, MOV or MKV</b><span>Pick the file type in settings.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Kill detection</h2><p class="muted">No setup, on any server.</p></div>
+    <ul class="flist">
+      <li><b>Server kill messages</b><span>Knows mcpvp.club, PvPHQ and FlowPvP, and tries every rule on every server.</span></li>
+      <li><b>Kill-word fallback</b><span>Catches custom wording like "obliterated" or "popped" when the line names you and one other online player.</span></li>
+      <li><b>Crystals, anchors and beds</b><span>Setting one off marks nearby players. Arrows and tridents count as hits too.</span></li>
+      <li><b>Indirect kills</b><span>A player you damaged who dies in lava, the void or a fall within 10 seconds is your kill.</span></li>
+      <li><b>Wins that send you to the lobby</b><span>Kills at the end of a match are saved before the server moves you.</span></li>
+      <li><b>Never your deaths</b><span>"You were killed by Bob" and "Bob won against You" are ignored.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Recording</h2><p class="muted">Its own recorder, tuned to keep your fps.</p></div>
+    <ul class="flist">
+      <li><b>Nothing to install</b><span>FFmpeg is inside the jar for Windows, macOS and Linux.</span></li>
+      <li><b>GPU encoders</b><span>NVIDIA H.265, NVIDIA H.264, Intel or CPU. If one isn't available it falls back to CPU.</span></li>
+      <li><b>Light on the game</b><span>Frames are converted on the graphics card and handed to the encoder in the background at low priority.</span></li>
+      <li><b>Game audio</b><span>Minecraft's own sound by default. Whole-computer audio or no audio are in settings.</span></li>
+      <li><b>Smoothness check</b><span><code>/killclip status</code> shows game fps and the share of repeated frames.</span></li>
+      <li><b>Plays nice with modpacks</b><span>Works alongside Sodium, Lithium and friends. If another mod clashes with an editor hook, the game still starts.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Clip Editor</h2><p class="muted">Rewatch the fight itself, not just the video.</p><a href="#editor">How the editor works →</a></div>
+    <ul class="flist">
+      <li><b>Three cameras</b><span>First person, third person, or a free spectator camera you fly yourself.</span></li>
+      <li><b>Spectator keyframes</b><span>Drop keyframes and the camera glides through them on a smooth curve.</span></li>
+      <li><b>Slow-mo and zoom</b><span>Speed from 0.25x to 2x and zoom from 1x to 4x, per part of the clip.</span></li>
+      <li><b>Trim and split</b><span>Drag the ends to trim, split the camera track, merge parts back.</span></li>
+      <li><b>Smooth exports with sound</b><span>Every frame is rendered on its own, so exports are smooth even on a slow PC. Slow-mo slows the sound to match.</span></li>
+      <li><b>Any video</b><span>Trim and convert MP4, MOV, MKV, AVI, WEBM and more, or import one into the clips folder.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Sharing and stats</h2><p class="muted">Out of the game and into the group chat.</p></div>
+    <ul class="flist">
+      <li><b>Get a link</b><span>Uploads the clip to catbox.moe (free, no account) and copies a link. Anyone with the link can watch.</span></li>
+      <li><b>Send to Discord</b><span>Post straight to a channel through a webhook. Clips are shrunk to fit Discord's limit.</span></li>
+      <li><b>Vertical 9:16</b><span>Saves a cropped vertical copy for Shorts, TikTok and Reels.</span></li>
+      <li><b>Kill stats</b><span>Kills, deaths, K/D, most kills in one life and best multi-kill, per server and in total. <code>/killclip stats</code>.</span></li>
+    </ul>
+  </div>
+</div></div>
+
+<!-- EDITOR -->
+<div class="page page-pad gutter" data-page="editor" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Clip Editor</span><h1 class="page-title">Rewatch the fight from any angle</h1><p class="sub">Every clip saves a small fight replay next to the video. Press <b>Clip Editor</b> on the main menu, pick a clip and press <b>Edit</b>. The fight loads inside Minecraft, fully offline.</p></div>
+
+  <div class="split">
+    <div style="display:grid;gap:28px">
+      <div><h3 style="margin-bottom:12px">The timeline</h3>
+        <ul class="checks">
+          <li><span><b>Clip track.</b> Drag the yellow ends to trim. Export only renders the part between them.</span></li>
+          <li><span><b>Camera track.</b> The fight is split into parts. Click a part, then set its POV, Speed and Zoom.</span></li>
+          <li><span><b>Spectator keyframes.</b> Fly to a spot and drop a keyframe. Add more and the camera glides through them.</span></li>
+          <li><span><b>Replays look like what you saw.</b> Your aim is recorded every frame, along with swings, crystal placing and held-item cooldown.</span></li>
+        </ul>
+      </div>
+      <div><h3 style="margin-bottom:12px">Export</h3>
+        <ul class="checks">
+          <li><span>Rendered frame by frame, so it's smooth even if your PC is slow. A progress bar shows while it works.</span></li>
+          <li><span>Carries the sound from your original clip, slowed to match any slow-mo.</span></li>
+          <li><span>Saved to <code>killclips/Edited</code> as MP4, MOV or MKV, and opened in your video player when done.</span></li>
+          <li><span>Turn on <b>9:16</b> for a vertical copy, then <b>Get link</b> to share it.</span></li>
+        </ul>
+      </div>
+      <p class="callout"><b>Which clips can change camera?</b> Clips recorded with the mod installed keep a fight replay. Older or imported videos open in the trimmer instead.</p>
     </div>
+    <div>
+      <h3 style="margin-bottom:12px">Editor keys</h3>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Key</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>P</kbd></td><td>Play or pause</td></tr>
+            <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Jump back or forward</td></tr>
+            <tr><td><kbd>I</kbd> <kbd>O</kbd></td><td>Trim the start or end at the playhead</td></tr>
+            <tr><td><kbd>X</kbd></td><td>Split the camera track at the playhead</td></tr>
+            <tr><td><kbd>Delete</kbd></td><td>Merge a part into the one before it</td></tr>
+            <tr><td><kbd>K</kbd></td><td>Drop a spectator keyframe</td></tr>
+            <tr><td><kbd>C</kbd></td><td>Move the keyframe to where the camera is now</td></tr>
+            <tr><td><kbd>W A S D</kbd></td><td>Fly the spectator camera. <kbd>Space</kbd> up, <kbd>Shift</kbd> down, <kbd>Ctrl</kbd> faster</td></tr>
+            <tr><td><kbd>E</kbd></td><td>Hide or show the editor</td></tr>
+            <tr><td><kbd>H</kbd></td><td>Show the full key list</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="endcta" style="margin-top:56px">
+    <div><h2>Try it on your own fights</h2><p>Install the mod, get a kill, and the replay is waiting in the Clip Editor.</p></div>
+    <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.11.5</a></div>
   </div>
 </div></div>
 
 <!-- DOWNLOAD -->
-<div class="page gutter" data-page="get" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Download</span><h1>Get Kill Clipper</h1><p class="sub">One jar. FFmpeg and the recorder are inside, so there's nothing else to install.</p></div>
+<div class="page page-pad gutter" data-page="get" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Download</span><h1 class="page-title">Get Kill Clipper</h1><p class="sub">One jar. FFmpeg and the recorder are inside, so there's nothing else to install.</p></div>
   <div class="dl">
     <div class="dl-info">
-      <span class="eyebrow" data-reldate>Latest release · 29 Oct 2026</span>
-      <span class="dl-file">killclipper-1.5.1.jar</span>
+      <span class="eyebrow" data-reldate>Latest release · 11 Nov 2026</span>
+      <span class="dl-file">killclipper-1.11.5.jar</span>
       <div class="facts">
         <span class="chip">Minecraft 1.21.11</span>
         <span class="chip">Fabric Loader 0.19.3+</span>
         <span class="chip">Fabric API</span>
         <span class="chip">Java 21+</span>
-        <span class="chip">114 MB</span>
+        <span class="chip" data-size>109 MB</span>
       </div>
-      <div class="hash"><span>SHA-256</span><code id="sha">35d19a8297f88c5a7b5ba56395a0c2981c68cba805dfd5d61d41bc7584d1eebb</code><button class="copy" id="copy-sha" type="button">Copy</button></div>
+      <div class="hash"><span>SHA-256</span><code id="sha">95b7cfaf567c64e04dc9d03f3cac02c58d54af85e004c45920584efa9acbf1ae</code><button class="copy" id="copy-sha" type="button">Copy</button></div>
     </div>
     <div class="dl-actions">
       <a class="btn primary lg" data-dl href="#">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
         Download jar
       </a>
       <a class="dl-note" data-releases href="#">All releases</a>
@@ -429,32 +651,32 @@ footer a:hover { color: var(--fg); }
         <dt>Disk</dt><dd>About 2 to 6 MB per second of buffer at 1080p</dd>
       </dl>
     </aside>
-    <div class="head" style="margin:0">
+    <div style="display:grid;gap:18px">
       <h3>Next step</h3>
-      <p class="sub">Put the jar in your launcher's mods folder. The install guide has steps for the official launcher, Prism, CurseForge, Modrinth App, ATLauncher and MultiMC.</p>
+      <p class="sub">Put the jar in your launcher's mods folder and delete any older Kill Clipper jar. The install guide has steps for the official launcher, Prism, CurseForge, Modrinth App, ATLauncher and MultiMC.</p>
       <div class="cta"><a class="btn ghost" href="#install">Open the install guide</a></div>
     </div>
   </div>
 </div></div>
 
 <!-- INSTALL -->
-<div class="page gutter" data-page="install" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Install guide</span><h1>Pick your launcher</h1><p class="sub">Every launcher needs the same three things: a Fabric 1.21.11 instance, Fabric API, and the Kill Clipper jar in the mods folder.</p></div>
+<div class="page page-pad gutter" data-page="install" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Install guide</span><h1 class="page-title">Pick your launcher</h1><p class="sub">Every launcher needs the same three things: a Fabric 1.21.11 instance, Fabric API, and the Kill Clipper jar in the mods folder.</p></div>
   <div class="launchers" role="tablist" aria-label="Launcher" id="launchers"></div>
   <div class="guide">
     <ol class="steps" id="guide-steps" role="tabpanel"></ol>
     <aside class="reqbox">
       <h3>Before you start</h3>
       <ul class="checks">
-        <li><span>Download <a href="#get">killclipper-1.5.1.jar</a></span></li>
+        <li><span>Download <a href="#get">killclipper-1.11.5.jar</a></span></li>
         <li><span>Get <a href="https://modrinth.com/mod/fabric-api" target="_blank" rel="noopener">Fabric API</a> for 1.21.11 (most launchers can add it for you)</span></li>
         <li><span>Delete any older <code>killclipper-*.jar</code> from the mods folder</span></li>
       </ul>
-      <p class="meta">Clips save to the <code>killclips</code> folder next to <code>mods</code>.</p>
+      <p class="meta">Clips save to the <code>killclips</code> folder next to <code>mods</code>. Edited videos go to <code>killclips/Edited</code>.</p>
     </aside>
   </div>
 
-  <div class="band" style="margin-top:56px">
+  <div class="band" style="margin-top:64px;padding-bottom:0">
     <div class="head"><h2>Commands and settings</h2></div>
     <div class="tbl">
       <table>
@@ -462,9 +684,12 @@ footer a:hover { color: var(--fg); }
         <tbody>
           <tr><td><code>/killclip menu</code></td><td>Opens the settings: FPS, resolution, quality, encoder, file type, buffer and clip padding. Mod Menu adds a button for it too.</td></tr>
           <tr><td><code>/killclip status</code></td><td>Shows game fps and the share of frames repeated. Under a few percent is smooth. If the game runs below your recording FPS, lower the recording FPS to match.</td></tr>
-          <tr><td>Buffer</td><td>Auto by default, sized from your before-kill time, room for a streak of up to a minute, and the after time. You can also pick 30 to 300 s.</td></tr>
+          <tr><td><code>/killclip stats</code></td><td>Your kills, deaths, K/D and best streaks, per server and in total.</td></tr>
+          <tr><td><code>/killclip test</code></td><td>Saves a test clip so you can check video and sound.</td></tr>
+          <tr><td><code>/killclip folder</code></td><td>Opens the clips folder.</td></tr>
+          <tr><td><code>/killclip on</code> · <code>off</code></td><td>Turns kill clipping on or off.</td></tr>
           <tr><td><code>guessKills</code></td><td>Kill-word fallback, on by default. Set to <code>false</code> in <code>config/killclipper.json</code> if it ever clips something that wasn't a kill.</td></tr>
-          <tr><td><code>saveReplays</code></td><td>Saves a small <code>.kcreplay</code> next to each clip so the Clip Editor can change cameras. Set to <code>false</code> to turn it off.</td></tr>
+          <tr><td><code>openAfterExport</code></td><td>Exports open in your video player when saved. Set to <code>false</code> to stop that.</td></tr>
         </tbody>
       </table>
     </div>
@@ -472,8 +697,8 @@ footer a:hover { color: var(--fg); }
 </div></div>
 
 <!-- SUPPORT -->
-<div class="page gutter" data-page="support" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Support</span><h1>Get help</h1><p class="sub">Check the common fixes first. If that doesn't solve it, open a ticket and it goes straight to the developer.</p></div>
+<div class="page page-pad gutter" data-page="support" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Support</span><h1 class="page-title">Get help</h1><p class="sub">Check the common fixes first. If that doesn't solve it, open a ticket and it goes straight to the developer.</p></div>
   <div class="split">
     <div>
       <form class="ticket" id="ticket" novalidate>
@@ -481,10 +706,10 @@ footer a:hover { color: var(--fg); }
         <div class="row2">
           <div class="field"><label for="t-type">Type</label>
             <select id="t-type">
-              <option>Bug</option><option>Crash</option><option>Kill not clipped</option><option>Clip quality or lag</option><option>Feature request</option><option>Other</option>
+              <option>Bug</option><option>Crash</option><option>Kill not clipped</option><option>Clip quality or lag</option><option>Clip Editor or replay</option><option>Feature request</option><option>Other</option>
             </select></div>
           <div class="field"><label for="t-ver">Mod version</label>
-            <select id="t-ver"><option>1.5.1</option><option>1.5.0</option><option>1.4.0</option><option>1.3.0</option><option>1.2.3</option><option>Older</option></select></div>
+            <select id="t-ver"><option>1.11.5</option><option>1.11.4</option><option>1.11.3</option><option>1.11.2</option><option>1.11.1</option><option>1.11.0</option><option>Older</option></select></div>
         </div>
         <div class="row2">
           <div class="field"><label for="t-launcher">Launcher</label>
@@ -493,7 +718,7 @@ footer a:hover { color: var(--fg); }
         </div>
         <div class="field"><label for="t-title">Short summary</label><input id="t-title" maxlength="120" placeholder="Kill on PvPHQ wasn't clipped"><span class="err" id="e-title" hidden>Add a short summary.</span></div>
         <div class="field"><label for="t-desc">What happened?</label><textarea id="t-desc" placeholder="What you did, what you expected, and what happened instead."></textarea><span class="err" id="e-desc" hidden>Describe the problem in a sentence or two.</span></div>
-        <div class="field"><label for="t-log">Kill message or crash log (optional)</label><textarea class="mono" id="t-log" placeholder="Paste the chat line or the end of latest.log"></textarea><span class="hint">For crashes, paste the lines from <code>logs/latest.log</code> that mention killclipper.</span></div>
+        <div class="field"><label for="t-log">Kill message or crash log (optional)</label><textarea class="mono" id="t-log" placeholder="Paste the chat line or the end of latest.log"></textarea><span class="hint">For crashes, paste the lines from <code>logs/latest.log</code> that mention killclipper. For replays, the lines starting with "Replay".</span></div>
         <div class="field"><label for="t-status">/killclip status output (optional)</label><input id="t-status" placeholder="game 118 fps · frames repeated 2%"></div>
         <div class="cta"><button class="btn primary" type="submit">Create ticket</button></div>
       </form>
@@ -512,11 +737,12 @@ footer a:hover { color: var(--fg); }
       <h3 style="margin-bottom:8px">Common fixes</h3>
       <div class="faq">
         <details><summary>Do I need Medal, OBS or FFmpeg?</summary><p>No. The recorder and FFmpeg are inside the jar, which is why it's about 114 MB.</p></details>
-        <details><summary>Where are my clips?</summary><p>In the <code>killclips</code> folder of your Minecraft or instance folder. The Clip Editor button on the main menu lists them too.</p></details>
-        <details><summary>My clips look choppy.</summary><p>Run <code>/killclip status</code> after a match. If the game fps is lower than your recording FPS, set the recording FPS to match (for example 60). On NVIDIA cards, pick NVIDIA H.265 for smaller files and less CPU use.</p></details>
+        <details><summary>Where are my clips?</summary><p>In the <code>killclips</code> folder of your Minecraft or instance folder. Videos you export from the editor are in <code>killclips/Edited</code>. The Clip Editor on the main menu lists both.</p></details>
+        <details><summary>My clips look choppy.</summary><p>Run <code>/killclip status</code> after a match. If the game fps is lower than your recording FPS, set the recording FPS to match (for example 60). On NVIDIA cards, pick NVIDIA H.265. Sodium, Lithium, FerriteCore and ImmediatelyFast give the biggest fps boost.</p></details>
         <details><summary>A kill wasn't clipped.</summary><p>Open a ticket and paste the exact chat line the server showed. That's all that's needed to add the server's format.</p></details>
         <details><summary>It clipped something that wasn't a kill.</summary><p>Set <code>"guessKills": false</code> in <code>config/killclipper.json</code>. Known server messages and hit tracking still work.</p></details>
-        <details><summary>The game crashes on startup.</summary><p>Check you're on Minecraft 1.21.11 with Fabric API and Java 21 or newer, and that only one <code>killclipper</code> jar is in the mods folder.</p></details>
+        <details><summary>Edit does nothing, or the replay won't open.</summary><p>Update to the newest version first; several replay loading bugs were fixed in v1.11. If it still fails, the clip list says why, and <code>logs/latest.log</code> has lines starting with "Replay".</p></details>
+        <details><summary>The game crashes on startup.</summary><p>Check you're on Minecraft 1.21.11 with Fabric API and Java 21 or newer, and that only one <code>killclipper</code> jar is in the mods folder. Only use the jar named <code>killclipper-x.y.z.jar</code>, not a "-sources" one.</p></details>
         <details><summary>Will it get me banned?</summary><p>It only records what your own game already shows and receives. It sends nothing to the server and doesn't change gameplay. Check each server's rules on client mods if you're unsure.</p></details>
       </div>
     </div>
@@ -524,16 +750,16 @@ footer a:hover { color: var(--fg); }
 </div></div>
 
 <!-- TEAM -->
-<div class="page gutter" data-page="team" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Team</span><h1>Founders</h1><p class="sub">Kill Clipper is made by a crystal PvP player who wanted every kill saved without running a separate clipping app.</p></div>
+<div class="page page-pad gutter" data-page="team" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Team</span><h1 class="page-title">Founders</h1><p class="sub">Kill Clipper is made by a crystal PvP player who wanted every kill saved without running a separate clipping app.</p></div>
   <div class="founder">
     <div class="skin-stage" id="skin-stage">
       <img id="skin-fallback" alt="21xd_'s Minecraft skin" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAFACAYAAAA7/HcbAAAEmklEQVR42u3dMW4TQRiG4Yy9jhSSAh8BanokJBpOQMEhkDhEEu5Ag6ioKGhoaWkoEQchaRKkxPHQIxAfyqx37DxPPTLr3ZdZKb92Xfb6V6f5Z0vXh/cfR1d6vrizPRAgAgQBIkAQIAIEASJAGFHZgmOsXR9czQ6vlOIa2wERIAgQAYIAESACBAEiQNi0YVe+SDqRSLWeXLSemGzBBMYOiFswCBABggARIAgQAYIAmd7gFPzZuk7zKEo80am7cZ7tgAgQAYIAESAIEAGCABEgjKr7SUit3f8OR+T7g4fRuvmHd9G6R4+f2QFBgAgQBIgAQYAIEASIAOFfuv+dkDrVKGRXLnDnr8eyAyJABAgCRIAgQAQIAkSAMKr+346VzkGKi2kHBAEiQBAgAgQBIkAQIAKE33Q/Cfn2+X3Tzzv/cZYtbDxZub9chivv1iMwdkAEiABBgAgQBIgAQYAIEEZVDg4OvH0KOyACBAEiQBAgAgQBIkAQILtpcApuydu77IAIEASIAEGACBAEiABBgPTrzk1CTm9+RuvSwUU6CDmeH6jNDogAQYAIEASIABEgCBABwqYNvT/SMJtl//Lx9WW07nRxOMn3OL2+iNadLO6F1yM7L+v1OloXdxAurGEwdkDcghEgCBABggARIAgQAcKohnkJ/2Rd+n6908mQTRD2ag2/7jTft67D4wsnRLNZuMeko5BZbXma7YC4BSNAECACBAEiQBAgAoRxDTV92iP903Y6WEkfGgiXrdMJR+MTeLK6bPp5rScwtfF1iycm4QfaAXELRoAgQAQIAkSAIEAECKMaVqvrnfgii8UiWxhOBo4bTzhe7x9F60p4fKvVKvy6daIrYhKCWzAIEAGCABEgCBABggDpwLC/v9/1AV5dXTX9vHTCkf6eyGRv0QonHL1fXzsgAkSAIEAECAJEgCBABAijGpq/FKnxa5bm8+z/yHH4i+StfzG99TMXZbLfY2lfgh0Qt2AQIAIEASJAECACBAEyuaH9u5Nq1184nZhMJX2L1t6OXDc7IG7BCBAEiABBgAgQBIgAYVTl6Oio6Z/Av3x80/QAnzx/Ga2r5W5duPX6Jlr39dPbLITwmZCnL17ZAXELBgEiQBAgAgQBIkAQINtjSBe2nnCcn51F666u2/5OyKLz382Id47ZPDzP59G65XLZtIN0YmIHxC0YAYIAESAIEAGCABEgjKpswRFmz6xUl+4vJ6bra2wHRIAIEASIAEGACBAEiABhVNvwTqnqMu3uNbYDIkAECAJEgCBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAgQAQIAkSAIEAECAJEgCBABAgCRIAIEASIAEGACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQBIgAQYAIEASIAEGACBAEiABBgAgQAYIAESBs2OAU3FIJ11Wnyg6IAEGACBAEiAARIAgQAcLGmYTclgmHHRABggARIAgQAYIAESAIEAGCABEgCBABggARIAIEASJA2Lzunwk5PDxs/InZQxy1Zq+9KqXv83dxcWEHBAEiQBAgAgQBIkAQIALk7voF+lii9FH32ZEAAAAASUVORK5CYII=">
-      <span class="skin-hint" id="skin-hint" hidden>Drag to turn</span>
+      <span class="skin-hint" id="skin-hint" hidden>DRAG TO TURN</span>
     </div>
     <div class="founder-info">
-      <span class="role">Founder · Developer</span>
-      <div class="ign"><img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAA10lEQVR42u3YsQ3CMBAFUBsyABkBanp65qSiYgamQAwCbHBMgI2wLCPlXes4jp4uui/nlFKkrpUr6zH09FVaeAEAAAAAgCVX7p8DKikgysfnnHUAAAAAAAAA0Kem1jldDRqNc7w1J9T2+wUAAAAAAID7gH45IL74gK4VOgAAAAAAAAD4NIajddD3HdPpvt0V19eXU3F9fzjqAAAAAAAAAOBPc4AOAAAAAAAAAIbVNP7iXgcAAAAAAAAAo3LA7XpuesHr8eyaIzbzXHkidAAAAAAAAADwW70BBv4onKgCTGUAAAAASUVORK5CYII=" id="head-img"><h2>21xd_</h2></div>
+      <span class="role">FOUNDER · DEVELOPER</span>
+      <div class="ign"><img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAA10lEQVR42u3YsQ3CMBAFUBsyABkBanp65qSiYgamQAwCbHBMgI2wLCPlXes4jp4uui/nlFKkrpUr6zH09FVaeAEAAAAAgCVX7p8DKikgysfnnHUAAAAAAAAA0Kem1jldDRqNc7w1J9T2+wUAAAAAAID7gH45IL74gK4VOgAAAAAAAAD4NIajddD3HdPpvt0V19eXU3F9fzjqAAAAAAAAAOBPc4AOAAAAAAAAAIbVNP7iXgcAAAAAAAAAo3LA7XpuesHr8eyaIzbzXHkidAAAAAAAAADwW70BBv4onKgCTGUAAAAASUVORK5CYII="><h2>21xd_</h2></div>
       <p>Plays crystal PvP on mcpvp.club, PvPHQ and FlowPvP. Started Kill Clipper to clip every kill and streak automatically, with smooth 120 fps video that doesn't cost game fps.</p>
       <div class="servers"><span class="chip">mcpvp.club</span><span class="chip">PvPHQ</span><span class="chip">FlowPvP</span></div>
       <a class="btn ghost sm" href="https://namemc.com/profile/21XD_" target="_blank" rel="noopener">View on NameMC</a>
@@ -542,130 +768,41 @@ footer a:hover { color: var(--fg); }
 </div></div>
 
 <!-- CHANGELOG -->
-<div class="page gutter" data-page="changelog" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Changelog</span><h1>Release history</h1><p class="sub">All releases went out on 29 Oct 2026. Times are UTC.</p></div>
-  <div class="list cl">
-    <details open>
-      <summary><span class="ver">1.5.1</span><span class="sum">Smoother clips, reliable replays<span class="latest">Latest</span></span><span class="time">23:19</span></summary>
-      <ul>
-        <li>No more hitch every second: the 2 to 3 frame stutter at the one-second joins inside a clip is gone, and sound no longer drifts about 50 ms over a clip.</li>
-        <li>Replays survive a win → lobby move. Each clip keeps the replay of the game it happened in, even after a server switch or disconnect.</li>
-        <li>Two clips saved close together no longer risk losing part of the first one.</li>
-        <li>A clip save that gets stuck now gives up after a minute and reports an error.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.5.0</span><span class="sum">Clips up to 2 minutes, Auto buffer</span><span class="time">22:54</span></summary>
-      <ul>
-        <li>Before kill now goes up to 30, 45, 60, 90 or 120 seconds. A long streak saves up to 2 minutes, ending at the last kill.</li>
-        <li>New default buffer: Auto, sized from your clip settings (10 s before the kill uses 77 s, 120 s uses 187 s). Existing configs switch to Auto once.</li>
-        <li>Fight replays start fresh when the server moves you to another game, so each replay is smaller and saves faster.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.4.0</span><span class="sum">Clip Editor on the main menu</span><span class="time">22:45</span></summary>
-      <ul>
-        <li>Clip Editor button lists every clip; v1.3.0+ clips show [camera views].</li>
-        <li>Rewatch fights offline. V switches first person, third person or spectator; P pauses; arrows seek and change speed.</li>
-        <li>E opens the timeline to add camera switches. Two spectator switches in a row fly smoothly between spots.</li>
-        <li>Export plays back with your switches and saves MP4, MOV or MKV.</li>
-        <li>Trim and convert any video; Import video copies one into the clips folder.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.3.0</span><span class="sum">Fight replays saved with every clip</span><span class="time">21:53</span></summary>
-      <ul>
-        <li>Each clip gets a <code>.kcreplay</code> with every player's movement, hits, crystals and blocks, plus your own movement and gear.</li>
-        <li>About 300 KB per minute, written in the background. <code>saveReplays: false</code> turns it off.</li>
-        <li>New File type setting: MP4, MOV or MKV.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.2.3</span><span class="sum">Smoother game while recording</span><span class="time">06:53</span></summary>
-      <ul>
-        <li>FFmpeg runs at lower priority so Minecraft gets the CPU first.</li>
-        <li>Projectile hit tracking only checks projectiles near you.</li>
-        <li>GPU frame copies never make the game wait.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.2.2</span><span class="sum">Colour conversion on the GPU</span><span class="time">06:46</span></summary>
-      <ul>
-        <li>A shader converts frames to NV12 on the graphics card: 3 MB per 1080p frame instead of 8 MB.</li>
-        <li>Falls back to the old method automatically if the shader can't run.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.2.1</span><span class="sum">Fixes choppy clips</span><span class="time">06:20</span></summary>
-      <ul>
-        <li>Each frame is sent to FFmpeg once over a fast local connection instead of being re-sent when capture falls behind.</li>
-        <li><code>/killclip status</code> now shows the game's fps.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.2.0</span><span class="sum">NVIDIA H.265 and smoothness check</span><span class="time">05:25</span></summary>
-      <ul>
-        <li>New NVIDIA H.265 encoder for much smaller files at the same quality.</li>
-        <li>GPU buffers are reused instead of created per frame.</li>
-        <li><code>/killclip status</code> shows the share of repeated frames.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.9</span><span class="sum">Longer before-kill time, fewer false kills</span><span class="time">05:14</span></summary>
-      <ul>
-        <li>Before kill can be 15, 20 or 30 seconds.</li>
-        <li>"Bob won against You" is no longer counted as your kill.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.8</span><span class="sum">Kill-word fallback for unknown servers</span><span class="time">04:54</span></summary>
-      <ul>
-        <li>Lines with a kill word that name you and one other online player count, like "You popped Bob".</li>
-        <li>Dozens of custom verbs: destroyed, obliterated, demolished, crushed and more.</li>
-        <li>Lines where you died, player chat and lines naming several players are ignored.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.7</span><span class="sum">FlowPvP dagger-emoji messages</span><span class="time">04:42</span></summary>
-      <ul><li>Fixes kill messages that start with 🗡, like "🗡 Name has been killed by You."</li></ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.6</span><span class="sum">Kill messages recognized on every server</span><span class="time">04:28</span></summary>
-      <ul>
-        <li>mcpvp, PvPHQ and FlowPvP rules are tried on all servers.</li>
-        <li>Common formats and crystal PvP wording, with rank tags and emoji around names handled.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.5</span><span class="sum">Match-ending kills saved on lobby transfer</span><span class="time">04:07</span></summary>
-      <ul><li>Pending kills save right away when the server moves you to the lobby. A hit in the last 5 seconds counts if you won.</li></ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.4</span><span class="sum">Crystal, anchor and indirect kills</span><span class="time">03:59</span></summary>
-      <ul>
-        <li>Crystals, respawn anchors and beds mark nearby players.</li>
-        <li>Any death within 10 seconds of your damage counts. Projectiles count as hits.</li>
-        <li>mcpvp.club messages read on every region.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.3</span><span class="sum">Join crash and encoder fallback</span><span class="time">03:37</span></summary>
-      <ul>
-        <li>Fixes the "Missing credited death-message resource" crash.</li>
-        <li>Switches to the CPU encoder if the chosen one isn't available.</li>
-      </ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.2</span><span class="sum">Startup crash with MixinExtras 0.5.4</span><span class="time">03:21</span></summary>
-      <ul><li>Fixes "Mixin transformation of net.minecraft.class_4225 failed" in modpacks that ship MixinExtras 0.5.4.</li></ul>
-    </details>
-    <details>
-      <summary><span class="ver">1.1.1</span><span class="sum">First release</span><span class="time">03:05</span></summary>
-      <ul>
-        <li>Built-in recorder with a rolling buffer and bundled FFmpeg.</li>
-        <li>Game audio, kill and streak clips, hit tracking, settings for FPS, resolution, quality and encoder.</li>
-      </ul>
-    </details>
+<div class="page page-pad gutter" data-page="changelog" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Changelog</span><h1 class="page-title">Release history</h1><p class="sub" id="cl-sub">Every release, newest first. Times are UTC.</p></div>
+  <div class="list cl" id="cl-list">
+<details open><summary><span class="ver">1.11.5</span><span class="sum">Replays look like what you saw<span class="latest">LATEST</span></span><span class="time">11 Nov 01:57</span></summary><div class="notes"><ul><li><b>First-person hands:</b> replays now record every swing, the hand bob when you place crystals or blocks, and the attack cooldown that lowers your held item, then play them back exactly. This works for clips recorded with 1.11.5 or newer. Older clips keep the old, rougher swing.</li><li><b>Spectator camera:</b> flying around while editing is smooth now. The camera moves every frame instead of 20 times a second, even while the replay is paused.</li><li><b>Players blinking out:</b> if you use EntityCulling, it no longer hides players during replays. It was guessing too late when the camera jumped, so players disappeared in spectator view.</li><li><b>Blocks popping in:</b> an export now waits until the world around the camera is drawn before it records the first frame.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.5" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.4</span><span class="sum">Edit never opened some replays</span><span class="time">11 Nov 01:37</span></summary><div class="notes"><h4>Fixed</h4><ul><li><b>Edit never opened some replays.</b> If a clip started right at the beginning of its recording (for example, a kill soon after joining a match), the replay waited forever before the world even loaded. Those replays open now.</li><li><b>Kill clipping could switch itself off on Windows.</b> On startup the mod updates its settings file, but Windows didn't allow the file to be replaced while the mod was still reading it, and the mod then turned kill clipping off. Settings now save properly, and if saving ever fails, clipping stays on.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.4" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.3</span><span class="sum">Faster replays</span><span class="time">11 Nov 01:11</span></summary><div class="notes"><ul><li>Pressing Edit no longer freezes the game while the replay file is read. It loads in the background while the clip list says &quot;Opening the replay...&quot;.</li><li>Opening a replay skips the old sounds, particles, explosions and chat from before the clip, so it gets to your clip faster. This matters most after a long time on one server.</li><li>Going back on the timeline no longer reads the whole replay file from disk again.</li></ul><h4>Download tip</h4><ul><li>Only download <code>killclipper-1.11.3.jar</code>. Releases no longer include the &quot;-sources&quot; jar, which looked the same but crashed the game.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.3" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.2</span><span class="sum">A replay that never opened could take over a real server</span><span class="time">11 Nov 00:44</span></summary><div class="notes"><h4>Fixed</h4><ul><li><b>A replay that never opened could take over a real server.</b> If Edit got stuck on &quot;Opening the replay...&quot;, the replay kept running in the background. Joining a server afterwards made the game flicker between the replay and the server, and some servers would not let you in. Joining any server now closes a replay first, and a replay never touches a world that isn't its own.</li><li><b>Edit no longer hangs forever.</b> If a replay hasn't opened after 30 seconds, it stops and the clip list says why it couldn't load.</li><li>Pressing Done or Esc in the clip list while a replay is opening cancels it.</li><li>When a replay can't load, <code>logs/latest.log</code> now says what went wrong (look for lines starting with &quot;Replay&quot;).</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.1</span><span class="sum">Edit did nothing after an export went wrong</span><span class="time">11 Nov 00:07</span></summary><div class="notes"><h4>Fixed</h4><ul><li><b>Edit did nothing after an export went wrong.</b> If an export failed partway (for example the video encoder stopped), the game's clock stayed held by the unfinished export, so the next replay could never load and pressing Edit looked like it did nothing. A failed export now lets go of the clock straight away, and the editor reopens with the reason it failed.</li><li>If no frame can be captured for 15 seconds, the export stops by itself instead of hanging.</li></ul><h4>Changed</h4><ul><li>The clip list shows &quot;Opening the replay...&quot; after you press Edit, so you can tell it is loading.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.0</span><span class="sum">Smooth exports</span><span class="time">10 Nov 23:34</span></summary><div class="notes"><ul><li>The editor now exports frame by frame. Every frame of the video is rendered on its own, so the export is perfectly smooth even when the game runs below your recording FPS. A slow PC just takes a little longer to export.</li><li>Exports no longer depend on the recording buffer, so long edits and slow-mo can't run out of room.</li></ul><h4>Sound in exports</h4><ul><li>Exports now carry the sound from your original kill clip, the same sound you heard while playing (including your own hits and crystals). Slow-mo parts slow the sound down to match.</li><li>Clips recorded with v1.11.0 or newer line the sound up exactly. Older clips can be off by up to a second.</li><li>If the clip's video was deleted, the export is saved without sound and the editor says so.</li></ul><h4>Export loading bar</h4><ul><li>A green progress bar shows at the top of the screen while the clip exports. It is drawn after each frame is captured, so it never shows up in the video.</li></ul><h4>Your deaths stay out of kill clips</h4><ul><li>When you die (death screen, or a chat line saying you died or lost), any kills before it are saved right away, ending just before the death.</li><li>The next clip starts after your death, so the round you lost isn't in the clip even with a long before-kill time. At least 2 seconds before the kill are always kept.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.10.1</span><span class="sum">Clearer exports</span><span class="time">10 Nov 06:41</span></summary><div class="notes"><ul><li>The editor's saved settings (<code>.kcedit</code> files) no longer sit next to your clips, where they looked like the exported video. They now live in a hidden <code>.edits</code> folder; old ones are moved there automatically.</li><li>Your exported video is the MP4 / MOV / MKV in <code>killclips/Edited</code>. Pick the type with the button next to Export.</li><li>Export now tells you right away when recording is off, instead of playing the whole clip first.</li><li>Pressing Esc during an export stops it and takes you back to the editor with a message, instead of recording the pause menu into the video. Closing the replay mid-export also says the export was stopped.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.10.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.10.0</span><span class="sum">Finished edits get their own folder</span><span class="time">10 Nov 05:42</span></summary><div class="notes"><ul><li>Exports from the clip editor are now saved in an <b>Edited</b> folder inside your clips folder (<code>killclips/Edited</code>), apart from the raw kill clips.</li><li>When an export is saved, it opens straight away in your video player so you can watch the finished edit. With the 9:16 shape on, the vertical version opens once it is made.</li><li>Trimmed videos from the video trimmer also go to the Edited folder and open when saved.</li><li>Clicking the &quot;Saved&quot; message in the editor opens the Edited folder.</li><li>Edited videos also show up in the clip list, so you can find them from the editor.</li><li>To stop exports from opening by themselves, set <code>&quot;openAfterExport&quot;: false</code> in <code>config/killclipper.json</code>.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.10.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.9.2</span><span class="sum">Replays keep the fight after a win</span><span class="time">30 Oct 23:28</span></summary><div class="notes"><ul><li>When a win sent you back to the lobby, the replay saved next to the clip could show the lobby instead of the match. This happened when the duel started less than your before-kill time earlier: the replay was taken from the server you were on when the clip begins, which was the lobby.</li><li>The replay now comes from the server you were on when the kill happened. A kill or win announced right after you arrive in the lobby still uses the match you just left.</li><li>Clips you already saved keep their old replay; new fights are saved correctly.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.9.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.9.1</span><span class="sum">Smooth first-person aim</span><span class="time">30 Oct 19:34</span></summary><div class="notes"><ul><li>Your aim is now recorded on every frame you see, not just 20 times a second. Replays play it back frame by frame, so flicks and tracking look the way you played them instead of jittery.</li><li>This works for fights recorded with v1.9.1 or newer. Older replays still use the smoothed 20-per-second aim.</li></ul><h4>Share the edited clip</h4><ul><li>After an export, a <b>Get link</b> button appears next to the &quot;Saved&quot; message in the editor. It uploads the edited clip and copies a link you can paste in Discord.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.9.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.9.0</span><span class="sum">Replays look right</span><span class="time">30 Oct 19:15</span></summary><div class="notes"><ul><li>You now show up in spectator and third person on every server. A stand-in with your skin walks, swings, crouches, wears your armour and takes hits like any other player.</li><li>First person no longer jerks around. Knockback, crystal and anchor explosions, and server corrections used to push the replayed you between recorded ticks.</li><li>A replay that ends in your death no longer opens the death screen.</li></ul><h4>Spectator keyframes (like Replay Mod)</h4><ul><li>In spectator, fly the camera to a spot and press <b>K</b> (or <b>+Key</b>) to drop a keyframe.</li><li>Move to another time and spot and add another.</li><li>The camera glides on a smooth curve through all the keyframes, easing in at the first and out at the last.</li><li>Keyframes show as white marks on the camera track. <b>C</b> / <b>Set spot</b> moves the keyframe under the playhead to where the camera is now.</li></ul><h4>Share as a link</h4><ul><li><b>Share... → Get a link</b> uploads the clip and copies a link.</li><li>Paste the link in Discord and the video plays right in the chat. No webhook needed.</li><li>Clips go to catbox.moe (free, no account). Anyone with the link can watch.</li><li>You can still pick a vertical 9:16 version.</li></ul><h4>Export</h4><ul><li>After an export the editor comes back and tells you the file name it saved in your clips folder. Click the message to open the folder.</li><li>If an export can't be saved, the editor tells you why (for example the buffer is too short, or recording is off).</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.9.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.8.0</span><span class="sum">Editor</span><span class="time">30 Oct 05:30</span></summary><div class="notes"><ul><li>The video now sits on top, with the timeline and controls underneath it like a normal video editor. Nothing covers the picture anymore.</li><li>Spectator camera:</li><li class="sub">Fly with WASD, Space and Shift (Ctrl to go faster) while the editor is open.</li><li class="sub">Turn it by dragging on the video. With the editor hidden (E), use the mouse.</li><li class="sub">You can steer it while the replay plays, too. Press <b>C</b> or <b>Camera spot</b> to keep the spot.</li><li>Your own aim and movement play back smoothly. Before, it could stutter and look like your aim was jerking.</li><li>Keys changed so they don't clash with flying the camera:</li><li class="sub"><b>P</b> plays / pauses.</li><li class="sub"><b>X</b> splits.</li><li class="sub">The keys list now starts hidden; press <b>H</b> or <b>Keys</b> to show it.</li></ul><h4>Joining servers</h4><ul><li>Joining servers is faster. Recording fight replays used to rewrite every incoming packet (thousands of chunks while joining). It now just copies them.</li></ul><h4>Other</h4><ul><li>Discord uploads of long clips drop to 60 or 30 fps so they stay sharp.</li><li>The 9:16 copy, trimming and Discord shrinking run at low priority, so they don't cost game fps.</li><li>An export that slow-mo would make longer than the buffer warns you before it starts.</li><li>Stats are saved in the background and can't be half-written by a crash.</li><li>Share temp files are cleaned up.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.8.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.7.0</span><span class="sum">One editor for trimming and camera views</span><span class="time">30 Oct 02:48</span></summary><div class="notes"><ul><li>Pick a clip in the Clip Editor list and press <b>Edit</b>. The fight opens straight into the editor; you no longer need to press E first.</li><li>The editor now works like a normal video editor:</li><li class="sub"><b>Clip track:</b> drag the yellow ends to trim, or press <b>In</b> / <b>Out</b> (I / O) to trim at the playhead. Export only renders the trimmed part, and the bar shows how long that will be.</li><li class="sub"><b>Camera track:</b> the fight is split into parts. Click a part to pick it, then use <b>POV</b> (1st person, 3rd person, spectator), <b>Speed</b> and <b>Zoom</b> to change that part.</li><li class="sub"><b>Split</b> (S) starts a new camera part at the playhead, and <b>Merge</b> (Delete) joins a part into the one before it.</li><li class="sub">For a spectator part, press E to hide the editor, fly the camera with WASD, Space and Shift, then press <b>C</b> (or <b>Camera spot</b> in the editor) to save that spot.</li><li>Press <b>H</b> or the <b>Keys</b> button to show or hide a list of every editor key.</li><li>Clips without a fight replay (older or imported videos) still open the trim screen from the same <b>Edit</b> button.</li><li>Exported clips no longer show chat or the &quot;saving&quot; message.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.7.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.6.0</span><span class="sum">Slow-mo and zoom in the Clip Editor</span><span class="time">30 Oct 00:42</span></summary><div class="notes"><ul><li>Two new buttons above the timeline: <b>Speed</b> (0.25x, 0.5x, 1x, 1.5x, 2x) and <b>Zoom</b> (1x to 4x).</li><li>Pick a speed and zoom, then press <b>Add switch</b>. That switch sets the camera, speed and zoom from that point, and speed and zoom blend smoothly into the next switch, so you get proper speed ramps and slow zoom-ins.</li><li>Exports keep the slow-mo, so a slowed-down part makes the exported clip longer.</li></ul><h4>Vertical 9:16 export</h4><ul><li>The <b>16:9 / 9:16</b> button in the editor also saves a vertical copy (<code>_vertical.mp4</code>) cropped around the middle, ready for YouTube Shorts, TikTok and Reels.</li><li>In the Clip Editor list, <b>Share...</b> &gt; <b>Make 9:16 copy only</b> works on any clip.</li></ul><h4>Kill stats</h4><ul><li>Kills, deaths, K/D, most kills in one life, best multi-kill and streak count, for every server and in total.</li><li>Open it with the <b>Stats</b> button in the Clip Editor, or type <code>/killclip stats</code> in game.</li><li>Saved only on your PC in <code>config/killclipper-stats.json</code>. It counts from this version on.</li></ul><h4>Share to Discord</h4><ul><li><b>Share...</b> in the Clip Editor sends a clip to a Discord channel through a webhook (Channel settings &gt; Integrations &gt; Webhooks &gt; New Webhook &gt; Copy Webhook URL).</li><li>Clips are shrunk automatically to fit Discord's 10 MB limit, and can be sent normal or vertical.</li><li>The webhook URL is remembered.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.6.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.5.2</span><span class="sum">More game fps while recording at 120 fps</span><span class="time">29 Oct 23:36</span></summary><div class="notes"><ul><li><b>No frame copying on the game thread.</b> Each recorded frame now goes from the graphics card straight to the encoder. Before, the game copied every frame itself (about 3 MB, 120 times a second at 1080p). That copy now happens in the background, so the game has more time for each frame.</li><li><b>Less memory.</b> Frame memory the game no longer needs isn't allocated at all.</li><li><b>Plays nicer with other mods.</b> If another mod changes the parts of Minecraft the clip editor hooks into, the game still starts instead of crashing (only that editor detail stops working).</li></ul><p><b>Tips for more fps:</b></p><ul><li>Install <b>Sodium</b> (usually the biggest fps boost), plus <b>Lithium</b>, <b>FerriteCore</b> and <b>ImmediatelyFast</b>, all for 1.21.11.</li><li>In ATLauncher, open your instance's Settings → Java/Minecraft. Give it 4 to 6 GB of memory and add <code>-XX:+UseZGC -XX:+ZGenerational</code> to the Java arguments. It cuts down on the small freezes Java's memory cleanup can cause.</li><li>Set the recording FPS no higher than the fps your game actually gets (<code>/killclip status</code> shows both), and keep the encoder on <b>NVIDIA H.265</b>.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.5.2.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.5.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.5.1</span><span class="sum">Smoother saved clips and more reliable fight replays</span><span class="time">29 Oct 23:19</span></summary><div class="notes"><ul><li><b>No more hitch every second.</b> Saved clips had a tiny 2 to 3 frame stutter at many of the one-second joins inside the clip, and the sound could drift about 50 ms over a clip. The pieces now join seamlessly. In testing, a 7 s clip went from 4 hitches to 0.</li><li><b>Replays survive a win → lobby move.</b> If a server sent you back to the lobby right after a kill, the clip's fight replay could come out empty or show the lobby. Each clip now keeps the replay of the game it happened in, even after a server switch or disconnect.</li><li>Two clips saved close together no longer risk losing part of the first one.</li><li>A clip save that gets stuck now gives up after a minute and reports an error.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.5.1.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.5.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.5.0</span><span class="sum">Longer clips and an automatic buffer</span><span class="time">29 Oct 22:54</span></summary><div class="notes"><p>Longer clips and an automatic buffer. Includes everything from v1.4.0 (the in-game Clip Editor with camera views).</p><ul><li><b>Clips up to 2 minutes.</b> &quot;Before kill&quot; now goes up to 30, 45, 60, 90 or 120 seconds. A long streak saves up to 2 minutes, ending at the last kill.</li><li><b>Buffer: Auto (new default).</b> The buffer sizes itself from your clip settings: the time before the kill, room for a streak of up to a minute, and the time after. For example, 10 s before the kill uses a 77 s buffer and 120 s uses 187 s. The Buffer button shows the size it picked. You can still set 30, 60, 120, 180 or 300 s yourself. Existing configs switch to Auto once.</li><li><b>Smaller, faster replays.</b> When a server moves you to another game (lobby to match and back), the fight replay starts fresh. Each clip's replay then only holds the current game, so saving it is quicker and the file is smaller.</li></ul><p>The buffer is kept on disk, not in memory, so a longer buffer doesn't slow the game. At 1080p it uses roughly 2 to 6 MB per second of buffer, depending on quality.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.5.0.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.5.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.4.0</span><span class="sum">The in-game clip editor, like Flashback</span><span class="time">29 Oct 22:45</span></summary><div class="notes"><p>The in-game clip editor, like Flashback: watch your fights again from any camera and export new clips.</p><p><b>Open it:</b> the new <b>Clip Editor</b> button at the top left of the main menu lists every clip in your clips folder. Clips saved with v1.3.0 or newer show <b>[camera views]</b>.</p><p><b>Edit a fight (clips with camera views):</b> pick the clip and press <b>Edit fight (cameras)</b>. The fight loads inside Minecraft, fully offline.</p><ul><li><b>V</b> switches camera: first person, third person, or spectator (free camera: WASD, Space up, Shift down, Ctrl faster, mouse to look).</li><li><b>P</b> pauses, <b>←/→</b> jumps 5 s, <b>↑/↓</b> changes speed.</li><li><b>E</b> opens the timeline. Click the bar to jump, then <b>Add switch</b> to set the camera from that moment (green first person, blue third person, orange spectator). Two spectator switches in a row fly the camera smoothly between the two spots. <b>Remove</b> deletes the switch nearest the playhead. Edits are saved automatically.</li><li><b>Export</b> plays the clip from the start with your camera switches and saves it as a new video (MP4, MOV or MKV). It records in real time, so the clip must fit in your Buffer setting.</li><li><b>Leave</b> (or Esc → Disconnect) goes back to the clip list.</li></ul><p><b>Trim / convert any video:</b> works on MP4, MOV, MKV, AVI, WEBM and more. Drag along the bar to preview, <b>Set start</b> and <b>Set end</b>, choose MP4, MOV or MKV, then <b>Export</b>. <b>Import video...</b> copies a video from anywhere on your PC into the clips folder.</p><p>It's all client side: recording only saves what your game already receives and playback has no server connection.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.4.0.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.4.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.3.0</span><span class="sum">First stage of the in-game clip editor</span><span class="time">29 Oct 21:53</span></summary><div class="notes"><p>First stage of the in-game clip editor: every clip now also saves its fight as a replay.</p><ul><li><b>Fight replays.</b> Next to each video the mod now saves a <code>.kcreplay</code> file with the fight itself: every player's movement, hits, crystals and blocks, plus your own movement and gear. The upcoming main-menu editor uses these to show the fight from first person, third person or a free spectator camera. Only clips saved with v1.3.0 or newer will have one, so keep this version installed while you play.</li><li>Replays are small (about 300 KB per minute in testing) and are written in the background at low priority. Turn them off with <code>saveReplays: false</code> in the config.</li><li><b>Clip file type.</b> New &quot;File type&quot; button in the settings: MP4 (default), MOV or MKV.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.3.0.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.3.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.2.3</span><span class="sum">Performance pass so the game stays smooth while recording</span><span class="time">29 Oct 06:53</span></summary><div class="notes"><p>Performance pass so the game stays smooth while recording. Includes everything from v1.2.2 (frames converted on the GPU like Medal, about 60% less data per frame).</p><ul><li><b>Recorder runs at lower priority.</b> FFmpeg now runs below normal priority, so whenever the CPU is busy Minecraft gets it first. With the NVIDIA encoder the recorder needs very little CPU anyway.</li><li><b>Less work every tick.</b> Arrow and trident hit tracking now only looks at projectiles near you instead of every loaded entity.</li><li>Frame copies from the GPU were checked and never make the game wait; they finish in the background.</li></ul><p>Tip: in <code>/killclip status</code>, if the game fps is below the recording FPS, lower the recording FPS to match (for example 60). Recording faster than the game runs only repeats frames and makes files bigger.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.2.3.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.2.3" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.2.2</span><span class="sum">Records the way Medal does</span><span class="time">29 Oct 06:46</span></summary><div class="notes"><p>Records the way Medal does: the colour conversion now happens on the graphics card.</p><ul><li><b>Before:</b> every frame was copied off the GPU as full RGBA (8 MB at 1080p) and FFmpeg converted it to video colours on the CPU.</li><li><b>Now:</b> a small shader converts the picture to NV12 (the format video encoders use) on the GPU, so each frame copied is 3 MB, about 60% less data, and FFmpeg has no colour conversion left. With the NVIDIA encoder the CPU now does almost nothing per frame, which should make clips much smoother.</li><li>The picture is the same as before. Width is rounded down to a multiple of 4 pixels (at most 3 pixels lost).</li><li>If the shader can't run on a PC, the mod falls back to the old method automatically. To force the old method, add <code>-Dkillclip.cpuConvert=true</code> to your Java arguments.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.2.2.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.2.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.2.1</span><span class="sum">Fixes choppy clips (a high &quot;frames repeated&quot; number in /killclip status)</span><span class="time">29 Oct 06:20</span></summary><div class="notes"><ul><li><b>Cause:</b> when capture fell behind, the mod sent the same full-size frame to FFmpeg several times to keep the frame rate. At 1080p and 120 fps that was close to 1 GB of data every second, which made it fall further behind.</li><li><b>Fix:</b> each captured frame is now sent once, over a fast local connection instead of a process pipe, and FFmpeg fills in repeats itself. That is much less data to move.</li><li><code>/killclip status</code> now also shows the game's own fps. Recording at 120 fps while the game runs at 60 will always repeat about half the frames, so set FPS to match what your game actually reaches.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.2.1.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.2.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.2.0</span><span class="sum">Smoother recording and smaller files</span><span class="time">29 Oct 05:25</span></summary><div class="notes"><ul><li><b>H.265 on NVIDIA:</b> new encoder choice &quot;NVIDIA H.265&quot; in the menu, the same format Medal's &quot;GPU H265&quot; uses. Files are much smaller at the same quality.</li><li><b>Less stutter while recording:</b> the mod no longer creates a new GPU buffer for every captured frame; it reuses a few. FFmpeg's color conversion now runs on several CPU threads.</li><li><b>Smoothness check:</b> <code>/killclip status</code> shows what share of frames were repeated because capture fell behind. Under a few percent is smooth; above 10% will look choppy, so try 60 fps or 720p.</li><li>Also in this release (from v1.1.9): Before kill up to 30 seconds, and &quot;Name won against You&quot; is no longer counted as your kill.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.2.0.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.2.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.9</span><span class="sum">Two fixes to kill detection and the clip window</span><span class="time">29 Oct 05:14</span></summary><div class="notes"><ul><li><b>Before kill</b> now has 15, 20 and 30 second options, up to 30 seconds. The default is still 5 seconds.</li><li><b>Kill detection counts only your kills.</b> A line like &quot;Bob won against You&quot; meant you lost, and it was being counted as your kill. Now it is ignored. &quot;Bob lost to You&quot; and &quot;Bob was killed by You&quot; still count.</li></ul><p>Includes everything from v1.1.8.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.9.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.9" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.8</span><span class="sum">Kills are counted even when a server uses wording the mod has never seen</span><span class="time">29 Oct 04:54</span></summary><div class="notes"><ul><li><b>Kill-word fallback:</b> if no known rule matches, a chat line counts as your kill when it has a kill word (killed, destroyed, obliterated, popped, eliminated, taken out, won, and so on), names you and exactly one other online player, and says you did it. That means either &quot;Bob was taken out by You&quot; or &quot;You popped Bob&quot;.</li><li><b>Custom wording:</b> dozens of kill words like destroyed, obliterated, demolished, eviscerated, crushed, popped, and messages that say &quot;You&quot; instead of your name (&quot;You obliterated Bob!&quot;).</li><li>Lines where you died or lost (&quot;You were killed by Bob&quot;, &quot;You lost to Bob&quot;), player chat (&quot;Bob: You killed Bob&quot;) and lines naming more than one other player are ignored.</li><li>Turn it off with <code>&quot;guessKills&quot;: false</code> in <code>config/killclipper.json</code> if it ever clips something that wasn't a kill.</li></ul><p>Includes everything from v1.1.7.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.8.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.8" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.7</span><span class="sum">Fixes FlowPvP kill messages that start with a dagger emoji, such as &quot;🗡 Name has …</span><span class="time">29 Oct 04:42</span></summary><div class="notes"><p>Fixes FlowPvP kill messages that start with a dagger emoji, such as &quot;🗡 Name has been killed by You.&quot;</p><p>Includes everything from v1.1.6.</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.7.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.7" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.6</span><span class="sum">Kill messages are now recognized on every server, not just the ones the mod knew …</span><span class="time">29 Oct 04:28</span></summary><div class="notes"><p>Kill messages are now recognized on every server, not just the ones the mod knew about.</p><ul><li><b>Every server's rules everywhere:</b> the kill-message rules for mcpvp, PvPHQ and FlowPvP are now tried on all servers.</li><li><b>Common kill-message formats:</b> for example &quot;Bob was killed by You&quot;, &quot;You eliminated Bob&quot;, &quot;Bob lost the duel to You&quot; and &quot;You won the duel against Bob&quot;. Rank tags like [VIP], emoji and health numbers around the names are fine.</li><li><b>Crystal PvP messages:</b> &quot;crystalled&quot;, &quot;popped&quot;, &quot;anchored&quot;, &quot;blown up&quot; and similar.</li><li>A message only counts when you are the killer and the other player was online. Lines where a player is just typing in chat (&quot;Name: ...&quot; or &quot;&lt;Name&gt; ...&quot;) are ignored.</li></ul><p>Includes everything from v1.1.5 (lobby-transfer saving, crystal/anchor/projectile hit tracking, any cause of death).</p><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.6.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.6" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.5</span><span class="sum">Kills at the end of a match are no longer lost when the server sends you back to …</span><span class="time">29 Oct 04:07</span></summary><div class="notes"><p>Kills at the end of a match are no longer lost when the server sends you back to the lobby.</p><ul><li><b>Match wins:</b> when the server moves you to the lobby or another server, any kills waiting to be clipped are saved right away. Before, they were dropped. If you are alive and hit a player in the last 5 seconds before the move, that counts as a kill too, since the match ended with you winning. If you died, nothing is counted.</li></ul><p>Also includes everything from v1.1.4:</p><ul><li><b>Crystal PvP:</b> popping an end crystal, or setting off a respawn anchor or bed, marks the players near it. If one of them dies soon after, it is your kill.</li><li><b>Any cause of death:</b> a player you damaged who dies within 10 seconds counts, whether they burn in lava, fall, drown, hit the void or anything else.</li><li><b>Arrows, tridents and other projectiles</b> you shoot count as hits.</li><li><b>mcpvp.club:</b> its kill messages are read on every mcpvp server and region.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.5.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.5" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.4</span><span class="sum">Kill detection now catches far more kills</span><span class="time">29 Oct 03:59</span></summary><div class="notes"><ul><li><b>Crystal PvP:</b> popping an end crystal, or setting off a respawn anchor or bed, marks the players near it. If one of them dies soon after, it is your kill.</li><li><b>Any cause of death:</b> a player you damaged who dies within 10 seconds counts, whether they burn in lava, fall, drown, hit the void or anything else. Older config files are moved from 6 to 10 seconds automatically.</li><li><b>Arrows, tridents and other projectiles</b> you shoot count as hits.</li><li><b>mcpvp.club:</b> its kill messages are now read on every mcpvp server and region, including after the server transfers you.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.4.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.4" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.3</span><span class="sum">Fixes two problems found in v1.1.2</span><span class="time">29 Oct 03:37</span></summary><div class="notes"><ul><li><b>Crash when joining a server</b> (&quot;Missing credited death-message resource&quot;). A data file the kill detection needs was missing from the jar. It is back.</li><li><b>Recorder stopping with &quot;Option not found&quot;.</b> The AMD encoder is not included in the bundled FFmpeg. If the encoder you chose is not available on your PC, the mod now switches to the CPU encoder and keeps recording.</li></ul><p>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer. Put <code>killclipper-1.1.3.jar</code> in your <code>mods</code> folder and remove older <code>killclipper</code> jars.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.3" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.2</span><span class="sum">Fixes a crash at startup in v1.1.1 (&quot;Mixin transformation of net.minecraft.class_…</span><span class="time">29 Oct 03:21</span></summary><div class="notes"><p>Fixes a crash at startup in v1.1.1 (&quot;Mixin transformation of net.minecraft.class_4225 failed&quot;). It happened with MixinExtras 0.5.4, which many modpacks ship. The game audio hook no longer uses <code>@Redirect</code>.</p><ul><li>Minecraft 1.21.11, Fabric Loader 0.19.3 or newer, Fabric API, Java 21 or newer.</li><li>Download <code>killclipper-1.1.2.jar</code> (about 114 MB, FFmpeg is inside) and put it in your <code>mods</code> folder. Remove the old <code>killclipper-1.1.1.jar</code>.</li></ul><p>Everything else is the same as v1.1.1: automatic kill and streak clips, built-in recorder, game audio, settings through Mod Menu or <code>/killclip menu</code>.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.1.1</span><span class="sum">Kill Clipper for Minecraft 1.21.11 (Fabric), Java 21</span><span class="time">29 Oct 03:05</span></summary><div class="notes"><p>Kill Clipper for <b>Minecraft 1.21.11</b> (Fabric), <b>Java 21</b>. Same Minecraft and Java targets as the original medal-kill-clipper 1.1.1.</p><p>Saves an mp4 clip when you get a kill or a multi-kill streak. Nothing else to install.</p><p><b>Install:</b> put <code>killclipper-1.1.1.jar</code> and Fabric API in your <code>mods</code> folder. Mod Menu is optional and adds a settings button. Clips go to <code>.minecraft/killclips/</code>.</p><p><b>What's in it</b></p><ul><li>Built-in recorder with a rolling buffer. FFmpeg is bundled for Windows, macOS and Linux.</li><li>Game audio captured from Minecraft itself, on by default. Whole-computer audio or off are in settings.</li><li>Streaks: kills within the streak window become one clip. 2+ kills by default, adjustable.</li><li>Kill detection from death messages, plus hit tracking that works on any server.</li><li>Settings: FPS, resolution, quality, encoder (CPU/NVIDIA/AMD/Intel), buffer length, clip padding.</li></ul><p><b>Known limits</b></p><ul><li>Not yet tested on Windows, with real speakers, or in a real PvP fight.</li><li>The jar is about 114 MB because of the bundled FFmpeg builds. FFmpeg is GPL; see <code>FFMPEG_NOTICE.txt</code> in the jar.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.1.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
   </div>
 </div></div>
 </main>
@@ -673,136 +810,325 @@ footer a:hover { color: var(--fg); }
 <footer class="gutter">
   <div class="inner">
     <div>
-      <a class="brand" href="#home" style="margin-bottom:10px"><span class="brand-mark" aria-hidden="true"></span>Kill Clipper</a>
-      <p>Made by 21xd_. MIT licensed. FFmpeg is GPL; see <code>FFMPEG_NOTICE.txt</code> in the jar. Not affiliated with Mojang, Microsoft or Medal.</p>
+      <a class="brand" href="#home" style="margin-bottom:12px"><span class="brand-mark" aria-hidden="true"></span>Kill Clipper</a>
+      <p>Made by 21xd_. MIT licensed. FFmpeg is GPL; see <code>FFMPEG_NOTICE.txt</code> in the jar. Not an official Minecraft product. Not affiliated with Mojang, Microsoft or Medal.</p>
     </div>
-    <div><h4>Mod</h4><ul><li><a href="#features">Features</a></li><li><a href="#get">Download</a></li><li><a href="#install">Install guide</a></li><li><a href="#changelog">Changelog</a></li></ul></div>
-    <div><h4>Help</h4><ul><li><a href="#support">Support tickets</a></li><li><a href="#team">Team</a></li><li><a data-releases href="#">All releases</a></li></ul></div>
+    <div><h4>Mod</h4><ul><li><a href="#features">Features</a></li><li><a href="#editor">Clip Editor</a></li><li><a href="#get">Download</a></li><li><a href="#install">Install guide</a></li><li><a href="#changelog">Changelog</a></li></ul></div>
+    <div><h4>Help</h4><ul><li><a href="#support">Support tickets</a></li><li><a href="#team">Team</a></li><li><a data-releases href="#">All releases</a></li><li><a data-source href="#">Source code</a></li></ul></div>
   </div>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/skinview3d@3.1.0/bundles/skinview3d.bundle.js"></script>
 <script>
 (function () {
   var REPO = "21XDneverloses/Minecraft-kill-clipper";
-  var VERSION = "1.5.1";
+  var VERSION = "1.11.5";
   var JAR = "https://github.com/" + REPO + "/releases/download/v" + VERSION + "/killclipper-" + VERSION + ".jar";
   var SKIN = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAHCElEQVR4Xu1bTXPdNBS1m/QleS/Z0jZtZ5qUX1sW8AfKtBvYMyzoAroDhkXLDP8H46Ora90PSZb9nDQLDnOwLV1f6RzJsmO/dl0Nffj/MO4MtPU8Pz9PvPD7U64JlPR+ENvCJuwubjuc4ERLJtEX2oxIkecYcHvyWMM14QrqqIRr0T3v06zQI04mXMQybDmJy+8KmmCF2+M7wSQ2xyBcTn3JiwvXwRbdlZih1+3fBVzzTrSkvQQuzKXgsgHZwipyojc0wHVIFTjRif003RO1AZzENVFDPtgLzscZNAVVkRGeqIWz+GSCyFMAdbAv95Nz2FxYj5rQGFZEEjwtgDkD0uI3cVwD0Hi+A/nSDLit2v56XF5eDZeXl3VeZcoiO2PISpZg4vRi3GNLPsocNreoC8G6PSvIEshteT8mPIaA3M6xFscw5cG4TPnISWxplK9IqDRA7ruEzVSjWYKtl3cVLncxhrkyvpzbZgDjX3VEBS7xIpIJYSpPUGsDx9bBYhJkO7ZcI7cGfPzx20BrQNQ8/P3qZvjnz1/DMZJyPPZXcmvYnOVjL/47rXgGMIRnBs6NyRuprs0j4e4qJvfUFpfRMUQfDodJPPjXz98Hfv7lfWbea3AsyOcj+X6/H/Zj3nRLHG+T421xf9hP7YFTR9bC6Q5oyUkx6GTo7EgpXpoAfvyBxIFU9i7QxnMMCz87OwvPB9jiuQAmwAA2gTuT17EJxIybjuXWQZ4wdfawp5EzsQr9+N/N9VfD7fNnI58Ot9dPw/b1i2eBr66fBBNqtDktYKAkz6Q/fnobaOPXQD3xkfhoQjDAjpU8hgFPhtcQDxOiAUzUsVB03orPG6DbKxnwKc5UFWy72oj8DIjXrol1gMjbOOKvX8btC5oR0oASbT6NvmjA7+tngLMpiqd7dDKAZ0AdN8+TAV+/vJ6I4+MNKM8AXqtsfAsmsYGZP3hUmakPC93ubFzkdqpjJWIx3O12xMZziHQXsbR9zdQruOHurNiFRCMQVTTgXB9TbDLBxZdo8jBtf7hPon4WLkE7+9DILoqSDb/ZdcM3I7GV5TRbYIA3DbE2npgffdD2KVNfQJoLLskS8r3+bBxNbLFYQoRcN3DMD0CPH58G4Rh9xOM5BAJZvD13etcQTKB3DEqguSTbDUhwopYwjOYoiITBgPRgJQ1AZ7B/eno6xj4OsdhyPQvHlp9OA8UtGGbx8whT9aeXBpwH07sGOFE1xr/cJqYpzTPgMI0STGBxbMjJycnwaCTEswEcC7F2BrCZibEMM2pPBsg+cQxyqldyavXTSyGdnFv9JQv1fAlADNYCGEEjl8TziCIOBoBhJpySAWwan8OjzgtlMHkn7h6Ctj+Z+gLw3EpwSZZQGsAzAZ3nkeT7NAviGUCXQrps+BKh82i2IJ7PL9H2J1M/C5ekTv1eDm+A0VE2gBc0OY3ZCGkA4k9HwkCO4UuGj3MGXE379B7D9k/H1AzY7C6A2yCmG01Tu6LLy4ANCJcALpnxGAa82fUuHvQG+Jc3tj+ZeoHMY5Bd1DzLn8XA6TYYp3/4MoQFKEMYRQY8Ctc/PwfY2VKbAUx+9JVEf2xcJ5CR33WpQX17wTFW0zA1Zbm4LYE8opZWfI41s0DksYJK4gM/vFPT3xpgIQzpC/ZoNIQcB3OrWtpefBu1EZa2vhVq7dbquq0NuDewqoy6TFENGxiwsMWANefMo5i1WLGJAf9jQ1SGKmLLCB05f95qHJ16YYLK7wYePlr77uJEgat7yDims6Vzlz8NbIGj2zw6QRYPLOvqE+8Ad9WXNXnXnFPENslKWUrlBo1hi3FXeRtwF03Xctbq7hvNfWkOBLLB2cIVWJNnzTlfELK7S7rOv0WwtHEEn5lKRLkPqaEYrd4YyZcteLFiYl379sMGf/cvveCYTvc7AWVDWlDUqGHCMgakN0k61MMa8PnD+/Dtv2TAHGBAo4zNoH9gYV6h2WALawBGH9/+mwzIKMVPe2zZNsg0FpGfAdaAwvnWAH7f12QAYPLqS6DQqEJLjEYS7L4epTfKvTHGkuutAXPstkRVe7nSiTmGVuAcO4lMHzNFE2p1S+BEtLA0I6zAOXYPAE7EElpBoPpmIP7xhY0Da6NYqlPlpaCAaiWhNJKKWBvc+kDkz93yeYHuHPFzuFxEEXugD6n3PgMqXjhRNVrD/Pd/+vbP3/nxyVzW8Uxg49ABB9nZSseb4XOokkGu9ktpv+dr0gdXSRuDDjSBu+zFEErlDXCijqH9Dphj2+fvzonKa5xbEURRphbQIgrXeussIWH+M3iJnUChfwG1ugLiKfNnOhHH0AqcY7cGNWnZQqBYwZ1vG+Ec6af39BP8T3HfCi2x+9LgP3P5d4DNjLe+JN4ziCz9Y65I+y7gt+Kfv2kEw15Pfyf8B+FTpvcjlq0TAAAAAElFTkSuQmCC";
   var CAPE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAACWElEQVR4Xu2Xv0ocURTGF58hFiYg9nkCi3R5Apu8gp2dYAJiYxEklUUIJIIQLWKzFiFhQVhsBLXYJRvdhbAa10KIiBapR3+znMvJyawzrnOH1b0ffOz8c858v3vunbFUutFa/SDC77a2Ey3n5ze/ZTL3fDB6W6lG3ztnsQn5YWffBWebY3LeBr3Nts7ASgBU/1w6CNr6nA2JZ9c3nPMEcLDyLNpZenLv+6QKAOV2Jw6Jd6dLUftsIjo+nYi35TjX9AqeJ4DfX19GGADU//Kq1Pe9Mkl3AAXxSe1pbNlP6oCZj6v/OU8AEt57J2gAh2+6gTsroy48x2wHMNo2fB4ACH5UnnTh68ujxQCQKfBzrhu49Xnc/XIsKwA9DWydLJLwGBgAwDyHNwg8rAAgtBStv+5uU9xOAV8AJDw1AdCpTDkg3gFgRpviuLEwEv8CwXaADa7dLwBqaQAyDbDse4EgADYOf7nAtgN4HRYJQMLTAdjrNOBhCY+kkO0ApL8EbWhtmQa2TprOLxbjV6+8fajNmqAB1N6P3fm+qdIABIK2qAgAGkIvALl3AQ/7aa8W/bj668JacY5ruLbXAqgBYFsnTRYAXQAAFkO9FngDwAg3m81Ecz4rAIFg66SJ4OIkALIueAXAVMDyf4DsC4As4e8LQH+BMuLyVagXx1w/jy0ACc+xIgEgHVQAyDZfhF7XgCRrKEUBYB1orb34B4Qe+dwBDJpkMdTBvY3+IIq2t10go687wv7do1ISBL4FhqIDEEEby88Tu8Be+2ilIQxd+KCgoKCgoKCgoAJ0DV4O6JrwizEZAAAAAElFTkSuQmCC";
+  var $ = function (id) { return document.getElementById(id); };
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  document.querySelectorAll("[data-dl]").forEach(function (a) { a.href = JAR; a.target = "_blank"; a.rel = "noopener"; });
-  document.querySelectorAll("[data-releases]").forEach(function (a) { a.href = "https://github.com/" + REPO + "/releases"; a.target = "_blank"; a.rel = "noopener"; });
+  function setLinks() {
+    document.querySelectorAll("[data-dl]").forEach(function (a) { a.href = JAR; a.target = "_blank"; a.rel = "noopener"; });
+    document.querySelectorAll("[data-releases]").forEach(function (a) { a.href = "https://github.com/" + REPO + "/releases"; a.target = "_blank"; a.rel = "noopener"; });
+    document.querySelectorAll("[data-source]").forEach(function (a) { a.href = "https://github.com/" + REPO; a.target = "_blank"; a.rel = "noopener"; });
+  }
+  setLinks();
 
   /* Routing */
-  var ROUTES = ["home", "features", "get", "install", "support", "team", "changelog"];
-  var menuBtn = document.getElementById("menu-btn"), links = document.getElementById("navlinks");
+  var ROUTES = ["home", "features", "editor", "get", "install", "support", "team", "changelog"];
+  var menuBtn = $("menu-btn"), links = $("navlinks"), current = "home";
   menuBtn.addEventListener("click", function () { var o = links.classList.toggle("open"); menuBtn.setAttribute("aria-expanded", o ? "true" : "false"); });
   function route() {
     var r = (location.hash || "").replace("#", "");
     if (ROUTES.indexOf(r) < 0) r = "home";
+    current = r;
     document.querySelectorAll("[data-page]").forEach(function (p) { p.hidden = p.getAttribute("data-page") !== r; });
     document.querySelectorAll("[data-route]").forEach(function (a) { if (a.getAttribute("data-route") === r) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     links.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false");
     window.scrollTo(0, 0);
     if (r === "team") startSkin();
+    if (r === "home") demoResize();
   }
   window.addEventListener("hashchange", route);
 
-  /* Live demo */
-  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var $ = function (id) { return document.getElementById(id); };
-  var t0 = 0, timers = [];
-  function logLine(t, text, ok) {
-    var li = document.createElement("li"); if (ok) li.className = "ok";
-    var a = document.createElement("span"); a.textContent = t; var b = document.createElement("span"); b.textContent = text;
-    li.appendChild(a); li.appendChild(b); $("d-log").appendChild(li);
-  }
-  function feed(html) { var s = document.createElement("span"); s.innerHTML = html; $("d-feed").appendChild(s); }
-  function reset() {
-    $("d-feed").innerHTML = ""; $("d-log").innerHTML = "";
-    ["d-streak", "d-toast", "d-cam", "d-boom", "d-win"].forEach(function (id) { $(id).classList.remove("on"); });
-    $("d-k1").style.display = "none"; $("d-k2").style.display = "none";
-    $("d-crystal").style.opacity = 1; $("d-cross").style.opacity = 1;
-    $("d-frame").className = "frame"; $("d-rec").textContent = "REC";
-  }
-  function stamp() {
-    var d = new Date(); function p(n) { return (n < 10 ? "0" : "") + n; }
-    return "killclips/" + d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "_" + p(d.getHours()) + "-" + p(d.getMinutes()) + "_streak-2.mp4";
-  }
-  var STEPS = [
-    [0, function () { reset(); logLine("00:00", "Recording · buffer Auto (77 s on disk)"); }],
-    [1600, function () { feed("You <b>popped</b> xNova"); $("d-boom").classList.add("on"); $("d-crystal").style.opacity = 0; $("d-k1").style.display = "block"; logLine("00:41", "Kill 1 · crystal hit + chat line matched"); }],
-    [2100, function () { $("d-boom").classList.remove("on"); }],
-    [3600, function () { feed("You <b>crystalled</b> Kairo_"); $("d-k2").style.display = "block"; $("d-streak").classList.add("on"); logLine("00:47", "Kill 2 inside streak window · streak x2"); }],
-    [6000, function () { $("d-streak").classList.remove("on"); $("d-win").classList.add("on"); $("d-file").textContent = stamp(); $("d-toast").classList.add("on"); logLine("00:52", "Clip saved · 0:21 · 1080p 120 fps H.265", true); logLine("00:52", "Fight replay saved (.kcreplay)", true); }],
-    [8600, function () { $("d-toast").classList.remove("on"); $("d-rec").textContent = "PLAYBACK"; $("d-cam").textContent = "CLIP EDITOR · 3RD PERSON"; $("d-cam").classList.add("on"); $("d-frame").className = "frame cam3"; $("d-cross").style.opacity = 0; logLine("edit", "Clip Editor · camera switched to 3rd person"); }],
-    [10400, function () { $("d-cam").textContent = "CLIP EDITOR · SPECTATOR"; $("d-frame").className = "frame camS"; logLine("edit", "Camera switched to spectator · export MP4"); }],
-    [12600, null]
-  ];
-  var fillTimer;
-  function runDemo() {
-    timers.forEach(clearTimeout); timers = []; clearInterval(fillTimer);
-    t0 = Date.now();
-    STEPS.forEach(function (s) { timers.push(setTimeout(function () { if (s[1]) s[1](); else runDemo(); }, s[0])); });
-    fillTimer = setInterval(function () {
-      var e = Math.min((Date.now() - t0) / 6000, 1);
-      $("d-fill").style.width = (e * 92) + "%";
-      var secs = Math.round(36 + e * 16); $("d-time").textContent = "00:" + (secs < 10 ? "0" : "") + secs;
-    }, 200);
-  }
-  if (reduce) {
-    reset(); logLine("00:00", "Recording · buffer Auto (77 s on disk)");
-    feed("You <b>popped</b> xNova"); feed("You <b>crystalled</b> Kairo_");
-    $("d-k1").style.display = "block"; $("d-k2").style.display = "block"; $("d-win").classList.add("on");
-    $("d-fill").style.width = "92%"; $("d-time").textContent = "00:52"; $("d-crystal").style.opacity = 0;
-    logLine("00:41", "Kill 1 · crystal hit + chat line matched"); logLine("00:47", "Kill 2 inside streak window · streak x2");
-    $("d-file").textContent = stamp(); $("d-toast").classList.add("on"); logLine("00:52", "Clip saved · 0:21 · 1080p 120 fps H.265", true);
-  } else { runDemo(); }
+  /* Audio tile bars */
+  (function () { var w = $("wave"), h = [30, 55, 80, 45, 95, 60, 35, 70, 100, 50, 75, 40, 88, 58, 32, 66, 92, 48, 72, 38, 84, 54, 28, 62]; h.forEach(function (v) { var i = document.createElement("i"); i.style.height = v + "%"; w.appendChild(i); }); })();
 
-  /* Install guides */
-  var MODS = "the instance's <code>mods</code> folder";
+  /* ---------- Replay editor demo ---------- */
+  var T = 10, K1 = 3.6, K2 = 6.5, SLOW0 = 6.2, SLOW1 = 7.0;
+  var SEGS = [[0, 3.0, "1"], [3.0, 5.4, "3"], [5.4, 10, "S"]];
+  var POV = { "1": ["1ST PERSON", "var(--pov1)"], "3": ["3RD PERSON", "var(--pov3)"], "S": ["SPECTATOR", "var(--povs)"] };
+  var t = 0, playing = !reduce, override = null, three = null, lastFeed = -1;
+  var PLAY = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>';
+  var PAUSE = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>';
+
+  function povAt(time) { if (override) return override; for (var i = 0; i < SEGS.length; i++) if (time < SEGS[i][1]) return SEGS[i][2]; return "S"; }
+  function drawCamLane() {
+    var lane = $("camlane"), html = "";
+    (override ? [[0, T, override]] : SEGS).forEach(function (s) {
+      html += '<div class="cseg" style="left:' + (s[0] / T * 100) + '%;width:calc(' + ((s[1] - s[0]) / T * 100) + '% - 2px);background:' + POV[s[2]][1] + '">' + POV[s[2]][0] + "</div>";
+    });
+    if (!override) [5.6, 7.2, 8.6, 9.8].forEach(function (k) { html += '<i class="kf" style="left:' + (k / T * 100) + '%"></i>'; });
+    lane.innerHTML = html;
+  }
+  function setPlaying(p) { playing = p; var b = $("ed-play"); b.innerHTML = p ? PAUSE : PLAY; b.setAttribute("aria-label", p ? "Pause" : "Play"); }
+  function hud() {
+    var pov = povAt(t), el = $("v-pov");
+    el.lastChild.textContent = POV[pov][0]; el.firstChild.style.background = POV[pov][1];
+    $("v-cross").hidden = pov !== "1";
+    $("v-fx").classList.toggle("on", t >= SLOW0 && t <= SLOW1);
+    $("v-banner").classList.toggle("on", t >= K2 && t < K2 + 2);
+    var n = t >= K2 ? 2 : t >= K1 ? 1 : 0;
+    if (n !== lastFeed) { lastFeed = n; $("v-feed").innerHTML = (n > 0 ? "<span>21xd_ <b>popped</b> xNova</span>" : "") + (n > 1 ? "<span>21xd_ <b>crystalled</b> Kairo_</span>" : ""); }
+    var f = Math.max(0, 1 - Math.abs(t - K1 - .05) / .12, 1 - Math.abs(t - K2 - .05) / .12);
+    $("v-flash").style.opacity = (f * .55).toFixed(2);
+    var lane = $("camlane").getBoundingClientRect(), box = $("tracks").getBoundingClientRect();
+    $("playhead").style.left = (lane.left - box.left + lane.width * t / T - 1) + "px";
+    $("ed-time").textContent = "0:0" + t.toFixed(1) + " / 0:10.0";
+  }
+  function seek(clientX) { var lane = $("camlane").getBoundingClientRect(); t = Math.max(0, Math.min(T - .01, (clientX - lane.left) / lane.width * T)); frame(0); }
+  (function () {
+    var tr = $("tracks"), drag = false;
+    tr.addEventListener("pointerdown", function (e) { drag = true; try { tr.setPointerCapture(e.pointerId); } catch (x) {} seek(e.clientX); });
+    tr.addEventListener("pointermove", function (e) { if (drag) seek(e.clientX); });
+    tr.addEventListener("pointerup", function () { drag = false; });
+    tr.addEventListener("pointercancel", function () { drag = false; });
+  })();
+  $("ed-play").addEventListener("click", function () { setPlaying(!playing); });
+  document.querySelectorAll("[data-pov]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = b.getAttribute("data-pov"); override = v === "auto" ? null : v;
+      document.querySelectorAll("[data-pov]").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      drawCamLane(); frame(0);
+    });
+  });
+
+  function smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+  function bump(x) { return x <= 0 || x >= 1 ? 0 : Math.sin(x * Math.PI); }
+
+  function initThree() {
+    if (!window.THREE) return null;
+    var canvas = $("scene"), renderer;
+    try { renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true }); } catch (e) { return null; }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    var V3 = THREE.Vector3, scene = new THREE.Scene(), SKY = 0x0d0a17;
+    scene.background = new THREE.Color(SKY); scene.fog = new THREE.Fog(SKY, 20, 58);
+    var camera = new THREE.PerspectiveCamera(70, 16 / 9, .05, 140); scene.add(camera);
+    scene.add(new THREE.HemisphereLight(0xcfc4ff, 0x3a3320, .8));
+    var sun = new THREE.DirectionalLight(0xffffff, .6); sun.position.set(6, 12, 5); scene.add(sun);
+
+    var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    function pixTex(palette, rep) {
+      var c = document.createElement("canvas"); c.width = c.height = 16; var g = c.getContext("2d");
+      for (var y = 0; y < 16; y++) for (var x = 0; x < 16; x++) { g.fillStyle = palette[Math.floor(rnd() * palette.length)]; g.fillRect(x, y, 1, 1); }
+      var tx = new THREE.CanvasTexture(c); tx.magFilter = THREE.NearestFilter; tx.minFilter = THREE.NearestFilter; tx.generateMipmaps = false; tx.encoding = THREE.sRGBEncoding;
+      if (rep) { tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(rep, rep); }
+      return tx;
+    }
+    var floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshLambertMaterial({ map: pixTex(["#a9a377", "#a09a6e", "#b3ad80", "#969065", "#a9a377", "#a49e72"], 120) }));
+    floor.rotation.x = -Math.PI / 2; scene.add(floor);
+    var obsMat = new THREE.MeshLambertMaterial({ map: pixTex(["#15101f", "#1b1429", "#110c19", "#231a36", "#15101f"]) });
+    var boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    function block(x, y, z, sx, sy, sz) { var m = new THREE.Mesh(boxGeo, obsMat); m.position.set(x, y, z); if (sx) m.scale.set(sx, sy, sz); scene.add(m); return m; }
+    var C1 = new V3(2.6, 0, -2.6), C2 = new V3(5.0, 0, 2.6);
+    block(C1.x, .5, C1.z); block(C2.x, .5, C2.z); block(-1.5, .5, -4.5); block(-5.5, .5, -1.5); block(0.5, .5, 5.5); block(7.5, .5, -1.0);
+
+    function makeCrystal(scale) {
+      var g = new THREE.Group();
+      var core = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: 0xff8be2 })); core.scale.setScalar(.42);
+      var mid = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: 0xffc4f1, transparent: true, opacity: .38 })); mid.scale.setScalar(.68);
+      var out = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .2 })); out.scale.setScalar(.92);
+      g.add(core, mid, out); g.userData = { core: core, mid: mid, out: out }; g.scale.setScalar(scale || 1); scene.add(g); return g;
+    }
+    function spinCrystal(g, time, y) { var u = g.userData; u.core.rotation.set(time * 2.2, time * 1.7, .6); u.mid.rotation.set(.8 + time * 1.3, time * 2.1, .4); u.out.rotation.set(.5, .78 + time * 1.1, .6 + time * .7); g.position.y = y + Math.sin(time * 3) * .08; }
+    /* End pillars in the distance */
+    var towers = [[-17, 13, -15], [15, 17, -19], [24, 11, 7], [-23, 15, 9], [3, 19, -29], [-8, 10, 24]], farCrystals = [];
+    towers.forEach(function (p) { block(p[0], p[1] / 2, p[2], 3.4, p[1], 3.4); var c = makeCrystal(2.2); c.position.set(p[0], p[1] + 1.8, p[2]); c.userData.y = p[1] + 1.8; farCrystals.push(c); });
+    var starGeo = new THREE.BufferGeometry(), sp = [];
+    for (var i = 0; i < 260; i++) { var a = rnd() * Math.PI * 2, e = rnd() * 1.2 + .08; sp.push(Math.cos(a) * Math.cos(e) * 100, Math.sin(e) * 100, Math.sin(a) * Math.cos(e) * 100); }
+    starGeo.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xcdbbff, size: .7, fog: false })));
+
+    /* Player model built from a 64x64 skin */
+    function boxUV(geo, u, v, w, h, d) {
+      var rects = [[u + d + w, v + d, d, h], [u, v + d, d, h], [u + d, v, w, d], [u + d + w, v, w, d], [u + d, v + d, w, h], [u + d + w + d, v + d, w, h]];
+      var uv = geo.attributes.uv;
+      rects.forEach(function (r, f) {
+        var x0 = r[0] / 64, x1 = (r[0] + r[2]) / 64, y0 = 1 - r[1] / 64, y1 = 1 - (r[1] + r[3]) / 64, o = f * 4;
+        uv.setXY(o, x0, y0); uv.setXY(o + 1, x1, y0); uv.setXY(o + 2, x0, y1); uv.setXY(o + 3, x1, y1);
+      });
+      uv.needsUpdate = true; return geo;
+    }
+    function part(mat, w, h, d, u, v, grow) { var g = grow || 0; return new THREE.Mesh(boxUV(new THREE.BoxGeometry(w + g, h + g, d + g), u, v, w, h, d), mat); }
+    function skinTex(src) { var tx = typeof src === "string" ? new THREE.TextureLoader().load(src) : new THREE.CanvasTexture(src); tx.magFilter = THREE.NearestFilter; tx.minFilter = THREE.NearestFilter; tx.generateMipmaps = false; tx.encoding = THREE.sRGBEncoding; return tx; }
+    function makePlayer(tex, name) {
+      var mat = new THREE.MeshLambertMaterial({ map: tex }), over = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: .5 });
+      var root = new THREE.Group(), model = new THREE.Group(); model.scale.setScalar(.94 / 16 * 1.0); root.add(model);
+      function limb(x, y, u, v, ou, ov, w) {
+        var g = new THREE.Group(); g.position.set(x, y, 0);
+        var m = part(mat, w, 12, 4, u, v); m.position.y = -(y === 22 ? 4 : 6); g.add(m);
+        var o = part(over, w, 12, 4, ou, ov, .6); o.position.y = m.position.y; g.add(o);
+        model.add(g); return g;
+      }
+      var head = new THREE.Group(); head.position.set(0, 24, 0);
+      var hm = part(mat, 8, 8, 8, 0, 0); hm.position.y = 4; var ho = part(over, 8, 8, 8, 32, 0, 1); ho.position.y = 4; head.add(hm, ho); model.add(head);
+      var body = part(mat, 8, 12, 4, 16, 16); body.position.y = 18; var bo = part(over, 8, 12, 4, 16, 32, .6); bo.position.y = 18; model.add(body, bo);
+      var p = { root: root, model: model, head: head, mat: mat, over: over,
+        armR: limb(-6, 22, 40, 16, 40, 32, 4), armL: limb(6, 22, 32, 48, 48, 48, 4), legR: limb(-2, 12, 0, 16, 0, 32, 4), legL: limb(2, 12, 16, 48, 0, 48, 4) };
+      if (name) {
+        var c = document.createElement("canvas"); c.width = 256; c.height = 64; var g = c.getContext("2d");
+        g.font = "600 34px 'IBM Plex Sans', sans-serif"; var w = g.measureText(name).width + 28;
+        g.fillStyle = "rgba(0,0,0,.5)"; g.fillRect(128 - w / 2, 8, w, 48); g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(name, 128, 33);
+        var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), fog: false, depthWrite: false })); s.scale.set(2, .5, 1); s.position.y = 2.35; root.add(s); p.label = s;
+      }
+      scene.add(root); return p;
+    }
+    function enemySkin(armor, trim) {
+      var c = document.createElement("canvas"); c.width = c.height = 64; var g = c.getContext("2d");
+      function fill(x, y, w, h, base) { for (var j = 0; j < h; j++) for (var i2 = 0; i2 < w; i2++) { g.fillStyle = base[Math.floor(rnd() * base.length)]; g.fillRect(x + i2, y + j, 1, 1); } }
+      fill(0, 0, 32, 16, ["#c9a27e", "#c39b76", "#cfa986"]); fill(8, 0, 8, 8, armor); fill(0, 8, 32, 3, armor);
+      g.fillStyle = "#fff"; g.fillRect(9, 12, 2, 1); g.fillRect(13, 12, 2, 1); g.fillStyle = "#2b1b3a"; g.fillRect(10, 12, 1, 1); g.fillRect(13, 12, 1, 1);
+      fill(16, 16, 24, 16, armor); fill(40, 16, 16, 16, armor); fill(32, 48, 16, 16, armor); fill(0, 16, 16, 16, trim); fill(16, 48, 16, 16, trim);
+      g.fillStyle = trim[0]; g.fillRect(20, 26, 8, 2);
+      return c;
+    }
+    var you = makePlayer(skinTex(SKIN), "21xd_");
+    var e1 = makePlayer(skinTex(enemySkin(["#3fd8cc", "#35c4b9", "#56e6da"], ["#2aa89f", "#249990"])), "xNova");
+    var e2 = makePlayer(skinTex(enemySkin(["#4a4350", "#3d3743", "#57505e"], ["#2f2a35", "#39333f"])), "Kairo_");
+    var cr1 = makeCrystal(1), cr2 = makeCrystal(1); cr1.position.copy(C1); cr2.position.copy(C2);
+    var glow1 = new THREE.PointLight(0xff58c8, 0, 9), glow2 = new THREE.PointLight(0xff58c8, 0, 9); glow1.position.set(C1.x, 1.8, C1.z); glow2.position.set(C2.x, 1.8, C2.z); scene.add(glow1, glow2);
+    function makeBlast(c) { var m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffd0f3, transparent: true, opacity: 0, depthWrite: false })); m.position.set(c.x, 1.7, c.z); scene.add(m); return m; }
+    var blast1 = makeBlast(C1), blast2 = makeBlast(C2);
+    var bits = []; [[C1, K1], [C2, K2]].forEach(function (b) {
+      for (var n = 0; n < 16; n++) { var m = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({ color: n % 3 ? 0xff8be2 : 0xffffff })); m.scale.setScalar(.09 + rnd() * .09); var a2 = rnd() * Math.PI * 2; m.userData = { o: b[0], t0: b[1], dx: Math.cos(a2) * (1.5 + rnd() * 2.5), dz: Math.sin(a2) * (1.5 + rnd() * 2.5), vy: 2 + rnd() * 3 }; m.visible = false; scene.add(m); bits.push(m); }
+    });
+    /* First-person arm */
+    var fpArm = part(new THREE.MeshLambertMaterial({ map: you.mat.map }), 4, 12, 4, 40, 16); fpArm.scale.setScalar(.042); camera.add(fpArm);
+    var fpItem = makeCrystal(.16); camera.add(fpItem);
+
+    var path = new THREE.CatmullRomCurve3([new V3(-8, 4.5, 8), new V3(-2, 6.5, 10), new V3(6, 5, 9), new V3(11, 3.2, 2), new V3(9, 2.6, -5)]);
+    function posYou(x) { return new V3(-3.2 + Math.sin(x * 1.1) * 1.3, 0, 1.2 + Math.cos(x * .8) * 1.0); }
+    function posE1(x) { x = Math.min(x, K1); return new V3(2.0 + Math.sin(x * 1.7 + 1) * .7, 0, -1.2 + Math.cos(x * 1.3) * .5); }
+    function posE2(x) { x = Math.min(x, K2); return new V3(4.2 + Math.sin(x * 1.4) * .6, 0, 1.3 + Math.cos(x * 1.9 + 2) * .5); }
+    function walk(p, time, amt) { var s = Math.sin(time * 9) * .7 * amt; p.legR.rotation.x = s; p.legL.rotation.x = -s; p.armL.rotation.x = s * .8; p.armR.rotation.x = -s * .8; }
+    function enemy(p, pos, tk, from, time, look) {
+      var d = (time - tk) / .55, alive = d < 1;
+      p.root.visible = alive; if (!alive) return;
+      p.root.position.copy(pos); p.root.rotation.set(0, Math.atan2(look.x - pos.x, look.z - pos.z), 0);
+      walk(p, time + tk, 1);
+      var hit = d > 0; p.mat.color.setHex(hit ? 0xff6b6b : 0xffffff); p.over.color.setHex(hit ? 0xff6b6b : 0xffffff);
+      if (hit) { var k = new V3(pos.x - from.x, 0, pos.z - from.z).normalize(); p.root.position.addScaledVector(k, d * 2.4); p.root.position.y = Math.sin(d * Math.PI) * 1.2; p.root.rotation.z = d * Math.PI / 2; }
+      if (p.label) p.label.visible = !hit;
+    }
+    function crystal(c, glow, blast, base, tk, time) {
+      var on = time >= tk - .35 && time < tk; c.visible = on; if (on) spinCrystal(c, time, 1.7);
+      glow.intensity = on ? 1.6 : Math.max(0, 1 - (time - tk) / .4) * (time >= tk ? 6 : 0);
+      var d = (time - tk) / .45; blast.visible = d > 0 && d < 1; if (blast.visible) { blast.scale.setScalar(.4 + d * 2.4); blast.material.opacity = (1 - d) * .5; }
+    }
+    var look = new V3(), tmp = new V3();
+    function render(time) {
+      var py = posYou(time), p1 = posE1(time), p2 = posE2(time), w = smooth((time - 3.9) / .6);
+      var target = tmp.copy(p1).lerp(p2, w);
+      var yaw = Math.atan2(target.x - py.x, target.z - py.z), dir = new V3(Math.sin(yaw), 0, Math.cos(yaw));
+      you.root.position.copy(py); you.root.rotation.y = yaw; walk(you, time, .8);
+      var swing = Math.max(bump((time - (K1 - .4)) / .3), bump((time - (K2 - .4)) / .3));
+      you.armR.rotation.x -= swing * 1.5;
+      enemy(e1, p1, K1, C1, time, py); enemy(e2, p2, K2, C2, time, py);
+      crystal(cr1, glow1, blast1, C1, K1, time); crystal(cr2, glow2, blast2, C2, K2, time);
+      farCrystals.forEach(function (c, n) { spinCrystal(c, time * .6 + n, c.userData.y); });
+      bits.forEach(function (b) { var u = b.userData, d = time - u.t0; b.visible = d > 0 && d < 1.1; if (b.visible) b.position.set(u.o.x + u.dx * d, 1.7 + u.vy * d - 4.5 * d * d, u.o.z + u.dz * d); });
+
+      var pov = povAt(time), zoom = 1 + .6 * smooth((time - (SLOW0 - .3)) / .35) * (1 - smooth((time - SLOW1) / .5));
+      you.root.visible = pov !== "1"; fpArm.visible = fpItem.visible = pov === "1";
+      if (pov === "1") {
+        camera.position.set(py.x, 1.56 + Math.sin(time * 9) * .025, py.z); look.set(target.x, 1.05, target.z); camera.lookAt(look);
+        fpArm.position.set(.36, -.34 - swing * .1, -.5 + swing * -.12); fpArm.rotation.set(-1.25 - swing * .7, .12, .32);
+        fpItem.position.set(.2, -.14 - swing * .08, -.62); spinCrystal(fpItem, time, -.14 - swing * .08); fpItem.position.x = .2; fpItem.position.z = -.62;
+        fpItem.visible = time < K1 - .4 || (time > K1 + .5 && time < K2 - .4);
+        camera.fov = 78 / zoom;
+      } else if (pov === "3") {
+        var side = new V3(dir.z, 0, -dir.x);
+        camera.position.copy(py).addScaledVector(dir, -4.4).addScaledVector(side, 1.1); camera.position.y = 2.8;
+        look.copy(py).addScaledVector(dir, 3); look.y = 1.1; camera.lookAt(look); camera.fov = 66 / zoom;
+      } else {
+        var s = override ? time / T : (time - 5.4) / (T - 5.4);
+        camera.position.copy(path.getPoint(smooth(s))); look.set(2.4, 1.0, .6); camera.lookAt(look); camera.fov = 58 / zoom;
+      }
+      camera.updateProjectionMatrix(); renderer.render(scene, camera);
+    }
+    function resize() { var v = $("viewport"), w = v.clientWidth, h = v.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; }
+    return { render: render, resize: resize };
+  }
+
+  function demoResize() { if (three) { three.resize(); three.render(t); } hud(); }
+  var lastNow = 0, visible = true;
+  function frame(dt) {
+    if (dt) { t += dt * (t >= SLOW0 && t <= SLOW1 ? .3 : 1); if (t >= T) t = 0; }
+    if (three) three.render(t);
+    hud();
+  }
+  function loop(now) {
+    var dt = Math.min(.05, (now - lastNow) / 1000 || 0); lastNow = now;
+    if (playing && visible && current === "home" && !document.hidden) frame(dt);
+    requestAnimationFrame(loop);
+  }
+  try { three = initThree(); } catch (e) { three = null; }
+  if (!three) { $("scene").hidden = true; $("v-poster").hidden = false; }
+  drawCamLane(); setPlaying(playing);
+  if (reduce) t = 6.7;
+  if (window.IntersectionObserver) new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }).observe($("viewport"));
+  if (window.ResizeObserver) new ResizeObserver(demoResize).observe($("viewport")); else window.addEventListener("resize", demoResize);
+  demoResize(); requestAnimationFrame(loop);
+
+  /* ---------- Install guides ---------- */
+  var JARNAME = function () { return "<code>killclipper-" + VERSION + ".jar</code>"; };
   var GUIDES = {
     "Official launcher": [
       ["Install Fabric Loader.", "Run the <a href='https://fabricmc.net/use/installer/' target='_blank' rel='noopener'>Fabric installer</a>, choose Minecraft 1.21.11, and click Install. A new fabric-loader-1.21.11 profile appears in the launcher."],
-      ["Open the mods folder.", "Press Win + R, type <code>%appdata%\\.minecraft</code> and open <code>mods</code> (create it if it's missing). On macOS it's <code>~/Library/Application Support/minecraft/mods</code>."],
-      ["Add the jars.", "Copy <code>killclipper-1.5.1.jar</code> and Fabric API for 1.21.11 into <code>mods</code>."],
+      ["Open the mods folder.", "On Windows press Win + R, type <code>%appdata%\\.minecraft</code> and open <code>mods</code> (create it if it's missing). On macOS it's <code>~/Library/Application Support/minecraft/mods</code>."],
+      ["Add the jars.", "Copy {JAR} and Fabric API for 1.21.11 into <code>mods</code>."],
       ["Play.", "Pick the fabric-loader-1.21.11 profile and press Play. Clips save to <code>.minecraft/killclips</code>."]
     ],
     "Prism Launcher": [
       ["Create the instance.", "Click Add Instance, choose 1.21.11, set Mod loader to Fabric, then OK."],
       ["Add Fabric API.", "Select the instance, click Edit, open Mods, then Download mods. Search Fabric API, select it and click Review and confirm."],
-      ["Add Kill Clipper.", "In the same Mods page click Add file and pick <code>killclipper-1.5.1.jar</code>, or drag the jar onto the list."],
+      ["Add Kill Clipper.", "In the same Mods page click Add file and pick {JAR}, or drag the jar onto the list."],
       ["Launch.", "Close the window and click Launch. Clips save to the instance's <code>killclips</code> folder (Folder button on the instance)."]
     ],
     "CurseForge": [
       ["Create a profile.", "In the CurseForge app open Minecraft, click Create Custom Profile, choose version 1.21.11 and Fabric as the mod loader."],
       ["Add Fabric API.", "Open the profile, click Add More Content, search Fabric API and install it."],
       ["Open the mods folder.", "On the profile click the three dots, then Open Folder, and open <code>mods</code>."],
-      ["Add Kill Clipper and play.", "Drop <code>killclipper-1.5.1.jar</code> into <code>mods</code> and press Play."]
+      ["Add Kill Clipper and play.", "Drop {JAR} into <code>mods</code> and press Play."]
     ],
     "Modrinth App": [
       ["Create an instance.", "Click the + button, pick Fabric as the loader and 1.21.11 as the game version, then Create."],
       ["Add Fabric API.", "Open the instance, go to Content, click Install content, search Fabric API and install it."],
-      ["Add Kill Clipper.", "Drag <code>killclipper-1.5.1.jar</code> onto the Content page, or use the instance's Open folder button and drop it in <code>mods</code>."],
+      ["Add Kill Clipper.", "Drag {JAR} onto the Content page, or use the instance's Open folder button and drop it in <code>mods</code>."],
       ["Play.", "Press Play. Clips save to the instance's <code>killclips</code> folder."]
     ],
     "ATLauncher": [
       ["Create the instance.", "Go to Create Instance, choose Vanilla Minecraft 1.21.11, set Loader to Fabric, and click Create Instance."],
       ["Add Fabric API.", "On the instance card click Edit Mods, then Download Mods, search Fabric API and install it."],
-      ["Add Kill Clipper.", "In Edit Mods click Add Mod and pick <code>killclipper-1.5.1.jar</code>, or click Open Folder on the card and drop it in <code>mods</code>."],
+      ["Add Kill Clipper.", "In Edit Mods click Add Mod and pick {JAR}, or click Open Folder on the card and drop it in <code>mods</code>."],
       ["Play.", "Click Play on the instance. Clips save to its <code>killclips</code> folder."]
     ],
     "MultiMC": [
       ["Create the instance.", "Click Add Instance and choose 1.21.11."],
       ["Install Fabric.", "Select the instance, click Edit Instance, open Version, click Install Fabric and pick the newest loader."],
-      ["Add the jars.", "Open Loader mods, click Add and pick <code>killclipper-1.5.1.jar</code> and Fabric API for 1.21.11."],
+      ["Add the jars.", "Open Loader mods, click Add and pick {JAR} and Fabric API for 1.21.11."],
       ["Launch.", "Close the window and click Launch. Clips save to the instance's <code>.minecraft/killclips</code> folder."]
     ]
   };
-  var bar = $("launchers"), steps = $("guide-steps"), names = Object.keys(GUIDES);
+  var bar = $("launchers"), steps = $("guide-steps"), names = Object.keys(GUIDES), shown = names[0];
   function showGuide(name) {
+    shown = name;
     Array.prototype.forEach.call(bar.children, function (b) { b.setAttribute("aria-selected", b.textContent === name ? "true" : "false"); });
-    steps.innerHTML = GUIDES[name].map(function (s) { return "<li><div><strong>" + s[0] + "</strong><p>" + s[1] + "</p></div></li>"; }).join("");
+    steps.innerHTML = GUIDES[name].map(function (s) { return "<li><div><strong>" + s[0] + "</strong><p>" + s[1].replace("{JAR}", JARNAME()) + "</p></div></li>"; }).join("");
     try { localStorage.setItem("kc-launcher", name); } catch (e) {}
   }
   names.forEach(function (n, i) {
@@ -812,7 +1138,7 @@ footer a:hover { color: var(--fg); }
   var saved = null; try { saved = localStorage.getItem("kc-launcher"); } catch (e) {}
   showGuide(GUIDES[saved] ? saved : names[0]);
 
-  /* SHA copy */
+  /* Copy helpers */
   function copyText(text, btn, label, selectEl) {
     function done() { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = label; }, 1500); }
     function fallback() { if (selectEl) { var r = document.createRange(); r.selectNodeContents(selectEl); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } btn.textContent = "Selected, press Ctrl+C"; }
@@ -828,97 +1154,89 @@ footer a:hover { color: var(--fg); }
     $("e-title").hidden = !!title; $("e-desc").hidden = !!desc;
     if (!title) { $("t-title").focus(); return; }
     if (!desc) { $("t-desc").focus(); return; }
-    var id = "KC-" + Date.now().toString(36).slice(-6).toUpperCase();
-    var type = $("t-type").value;
-    var lines = [
-      "**Ticket:** " + id,
-      "**Type:** " + type,
-      "**Mod version:** " + $("t-ver").value,
-      "**Launcher:** " + $("t-launcher").value,
-      "**Server:** " + ($("t-server").value.trim() || "n/a"),
-      "",
-      "### What happened",
-      desc
-    ];
-    var log = $("t-log").value.trim(); if (log) { lines.push("", "### Kill message or log", "```", log.slice(0, 4000), "```"); }
-    var st = $("t-status").value.trim(); if (st) { lines.push("", "### /killclip status", st); }
+    var id = "KC-" + Date.now().toString(36).slice(-6).toUpperCase(), type = $("t-type").value;
+    var lines = ["**Ticket:** " + id, "**Type:** " + type, "**Mod version:** " + $("t-ver").value, "**Launcher:** " + $("t-launcher").value, "**Server:** " + ($("t-server").value.trim() || "n/a"), "", "### What happened", desc];
+    var log = $("t-log").value.trim(); if (log) lines.push("", "### Kill message or log", "```", log.slice(0, 4000), "```");
+    var st = $("t-status").value.trim(); if (st) lines.push("", "### /killclip status", st);
     ticketBody = lines.join("\n");
-    var url = "https://github.com/" + REPO + "/issues/new?title=" + encodeURIComponent("[" + type + "] " + title) + "&body=" + encodeURIComponent(ticketBody);
-    $("r-id").textContent = id; $("r-open").href = url; $("r-body").textContent = ticketBody;
+    $("r-id").textContent = id; $("r-body").textContent = ticketBody;
+    $("r-open").href = "https://github.com/" + REPO + "/issues/new?title=" + encodeURIComponent("[" + type + "] " + title) + "&body=" + encodeURIComponent(ticketBody);
     form.hidden = true; ready.hidden = false; $("r-open").focus();
   });
   $("r-copy").addEventListener("click", function () { copyText(ticketBody, $("r-copy"), "Copy ticket text", $("r-body")); });
   $("r-new").addEventListener("click", function () { form.reset(); ready.hidden = true; form.hidden = false; });
 
-  /* 3D skin */
+  /* 3D skin on the team page */
   var skinStarted = false;
   function startSkin() {
     if (skinStarted || !window.skinview3d) return; skinStarted = true;
     try {
       var stage = $("skin-stage"), canvas = document.createElement("canvas");
-      var w = stage.clientWidth || 300, h = Math.round(w * 4 / 3);
+      var w = stage.clientWidth || 320, h = Math.round(w * 4 / 3);
       var viewer = new skinview3d.SkinViewer({ canvas: canvas, width: w, height: h, skin: SKIN, cape: CAPE });
-      viewer.background = null;
-      viewer.zoom = 0.85;
-      viewer.autoRotate = !reduce; viewer.autoRotateSpeed = 0.6;
-      if (!reduce) viewer.animation = new skinview3d.WalkingAnimation();
-      if (viewer.animation) viewer.animation.speed = 0.6;
+      viewer.background = null; viewer.zoom = .85;
+      viewer.autoRotate = !reduce; viewer.autoRotateSpeed = .6;
+      if (!reduce) { viewer.animation = new skinview3d.WalkingAnimation(); viewer.animation.speed = .6; }
       $("skin-fallback").remove(); stage.insertBefore(canvas, stage.firstChild); $("skin-hint").hidden = false;
     } catch (e) { /* keep the flat image */ }
   }
 
-  /* Live sync with GitHub releases (works when the site is served from GitHub Pages; the built-in copy stays as a fallback) */
-  function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-  function inline(t) {
-    return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+  /* ---------- Live sync with GitHub releases (on the GitHub Pages site; the built-in copy is the fallback) ---------- */
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function inline(s) {
+    return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
       .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
-  function md(body) {
-    var out = [], list = false;
-    body.replace(/\r/g, "").split("\n").forEach(function (line) {
-      var m = line.match(/^\s*[-*] (.*)/);
-      if (m) { if (!list) { out.push("<ul>"); list = true; } out.push("<li>" + inline(m[1]) + "</li>"); return; }
+  function plain(s) { return s.replace(/\*\*|`/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim(); }
+  function relTitle(body) {
+    var lines = (body || "").replace(/\r/g, "").split("\n"), first = "";
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i].trim(); if (!l) continue;
+      var h = l.match(/^#{1,4}\s+(.*)/);
+      if (h) { if (/^(Kill Clipper v|fixed$|fixes$|changes$|changed$|new$|added$|what's new$)/i.test(h[1].trim())) continue; return plain(h[1]); }
+      if (!first) { first = plain(l.replace(/^[-*]\s+/, "")); var c = first.match(/^(.{4,70}?)[.:](\s|$)/); if (c) first = c[1]; }
+      if (first) break;
+    }
+    first = first.replace(/\.$/, ""); return first.length > 84 ? first.slice(0, 81) + "…" : first;
+  }
+  function md(body, title) {
+    var out = [], list = false, skipped = false;
+    (body || "").replace(/\r/g, "").split("\n").forEach(function (line) {
+      var h = line.match(/^\s*#{1,4}\s+(.*)/), m = line.match(/^(\s*)[-*]\s+(.*)/);
+      if (h) { if (list) { out.push("</ul>"); list = false; } if (/^Kill Clipper v/i.test(h[1])) return; if (!skipped && plain(h[1]) === title) { skipped = true; return; } out.push("<h4>" + inline(h[1]) + "</h4>"); return; }
+      if (m) { if (!list) { out.push("<ul>"); list = true; } out.push("<li" + (m[1].length >= 2 ? ' class="sub"' : "") + ">" + inline(m[2]) + "</li>"); return; }
       if (list) { out.push("</ul>"); list = false; }
-      if (line.trim()) out.push("<p>" + inline(line.trim()) + "</p>");
+      if (line.trim()) { if (!skipped && plain(line).replace(/\.$/, "") === title) { skipped = true; return; } out.push("<p>" + inline(line.trim()) + "</p>"); }
     });
     if (list) out.push("</ul>");
     return out.join("");
   }
-  function replaceText(root, from, to) {
-    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), n;
-    while ((n = w.nextNode())) if (n.nodeValue.indexOf(from) >= 0) n.nodeValue = n.nodeValue.split(from).join(to);
-  }
+  function replaceText(root, from, to) { var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), n; while ((n = w.nextNode())) if (n.nodeValue.indexOf(from) >= 0) n.nodeValue = n.nodeValue.split(from).join(to); }
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function p2(n) { return (n < 10 ? "0" : "") + n; }
   function applyReleases(rels) {
     rels = rels.filter(function (r) { return !r.draft && !r.prerelease; });
     if (!rels.length) return;
     var latest = rels[0], v = latest.tag_name.replace(/^v/, "");
     var jar = (latest.assets || []).filter(function (a) { return /^killclipper-.*\.jar$/.test(a.name) && !/sources/.test(a.name); })[0];
+    if (v !== VERSION) { document.querySelectorAll("main, nav.top").forEach(function (el) { replaceText(el, VERSION, v); }); VERSION = v; showGuide(shown); }
     if (jar) {
-      JAR = jar.browser_download_url;
-      document.querySelectorAll("[data-dl]").forEach(function (a) { a.href = JAR; });
+      JAR = jar.browser_download_url; setLinks();
       if (jar.digest) $("sha").textContent = jar.digest.replace(/^sha256:/, "");
+      document.querySelectorAll("[data-size]").forEach(function (el) { el.textContent = Math.round(jar.size / 1048576) + " MB"; });
     }
-    if (v !== VERSION) {
-      document.querySelectorAll("main, nav.top").forEach(function (el) { replaceText(el, VERSION, v); });
-      VERSION = v;
-    }
-    var d = new Date(latest.published_at);
-    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    var rd = document.querySelector("[data-reldate]"); if (rd) rd.textContent = "Latest release · " + d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear();
-    var first = latest.body ? latest.body.split("\n")[0].replace(/\*\*/g, "").trim() : "";
-    var nb = document.querySelector(".newbar"); if (nb && first) nb.innerHTML = "<b>NEW</b>" + esc("v" + v + ": " + (first.length > 60 ? first.slice(0, 57) + "…" : first));
-    var list = document.querySelector(".list.cl");
-    list.innerHTML = rels.map(function (r, i) {
-      var t = new Date(r.published_at), p = function (n) { return (n < 10 ? "0" : "") + n; };
-      var when = t.getUTCDate() + " " + months[t.getUTCMonth()] + " " + p(t.getUTCHours()) + ":" + p(t.getUTCMinutes());
-      var title = (r.body || "").split("\n")[0].replace(/\*\*/g, "").replace(/\.$/, "").trim() || r.name;
-      var bodyRest = (r.body || "").split("\n").slice(1).join("\n");
-      return "<details" + (i === 0 ? " open" : "") + "><summary><span class=\"ver\">" + esc(r.tag_name.replace(/^v/, "")) + "</span><span class=\"sum\">" + esc(title) + (i === 0 ? "<span class=\"latest\">Latest</span>" : "") + "</span><span class=\"time\">" + when + "</span></summary><div class=\"notes\">" + md(bodyRest) + "<a class=\"full\" href=\"" + esc(r.html_url) + "\" target=\"_blank\" rel=\"noopener\">Release on GitHub</a></div></details>";
+    var d = new Date(latest.published_at), when = d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear();
+    document.querySelectorAll("[data-reldate]").forEach(function (el) { el.textContent = "Latest release · " + when; });
+    var nb = document.querySelector(".newbar span"), lt = relTitle(latest.body); if (nb && lt) nb.textContent = "v" + v + ": " + lt;
+    var sel = $("t-ver"); sel.innerHTML = rels.slice(0, 6).map(function (r) { return "<option>" + esc(r.tag_name.replace(/^v/, "")) + "</option>"; }).join("") + "<option>Older</option>";
+    $("cl-list").innerHTML = rels.map(function (r, i) {
+      var x = new Date(r.published_at), title = relTitle(r.body) || r.name || r.tag_name;
+      return "<details" + (i === 0 ? " open" : "") + '><summary><span class="ver">' + esc(r.tag_name.replace(/^v/, "")) + '</span><span class="sum">' + esc(title) + (i === 0 ? '<span class="latest">LATEST</span>' : "") + '</span><span class="time">' + x.getUTCDate() + " " + MONTHS[x.getUTCMonth()] + " " + p2(x.getUTCHours()) + ":" + p2(x.getUTCMinutes()) + '</span></summary><div class="notes">' + md(r.body, title) + '<a class="full" href="' + esc(r.html_url) + '" target="_blank" rel="noopener">Release on GitHub</a></div></details>';
     }).join("");
-    var sub = document.querySelector("[data-page=changelog] .sub"); if (sub) sub.textContent = "Pulled live from GitHub releases. Times are UTC.";
+    $("cl-sub").textContent = "Pulled live from GitHub releases, newest first. Times are UTC.";
   }
   if (location.protocol === "https:" && /github\.io$|killclipper/i.test(location.hostname)) {
-    fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=50", { headers: { Accept: "application/vnd.github+json" } })
+    fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=100", { headers: { Accept: "application/vnd.github+json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (rels) { if (rels) applyReleases(rels); })
       .catch(function () {});
@@ -926,7 +1244,6 @@ footer a:hover { color: var(--fg); }
 
   route();
 })();
-</script>
 
-</body>
-</html>
+</script>
+</body></html>
