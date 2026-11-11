@@ -337,6 +337,14 @@ public final class ReplayPlayer {
       player.channel.close();
    }
 
+   /**
+    * True once the recording has reached the world itself. Before that (the server's setup steps) the replay must
+    * keep reading, even when the clip starts at the very beginning of the recording, or the world never opens.
+    */
+   private boolean joinedPlay() {
+      return this.state != null && this.state.id() == net.minecraft.network.NetworkPhase.PLAY;
+   }
+
    private boolean ownsGame() {
       return this.client.getNetworkHandler() != null && this.client.getNetworkHandler().getConnection() == this.connection;
    }
@@ -835,7 +843,7 @@ public final class ReplayPlayer {
       if (this.seekTargetMs >= 0L) {
          target = this.seekTargetMs;
          this.seekTargetMs = -1L;
-      } else if (this.paused || this.client.world == null && this.next > 0 && this.timeMs >= this.clipStartMs) {
+      } else if (this.paused || this.client.world == null && this.next > 0 && this.timeMs >= this.clipStartMs && this.worldLoaded) {
          target = this.timeMs;
       } else {
          target = this.timeMs + 50L;

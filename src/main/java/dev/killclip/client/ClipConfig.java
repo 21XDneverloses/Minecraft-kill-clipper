@@ -66,31 +66,44 @@ public final class ClipConfig {
          config.save();
          return config;
       } else {
+         ClipConfig config;
+         // Read and close the file before any save: on Windows an open file can't be replaced.
          try (BufferedReader reader = Files.newBufferedReader(PATH)) {
-            ClipConfig config = (ClipConfig)GSON.fromJson(reader, ClipConfig.class);
+            config = (ClipConfig)GSON.fromJson(reader, ClipConfig.class);
             if (config == null) {
                throw new IllegalArgumentException("Config must be a JSON object");
             }
 
             config.validate();
-            if (config.configVersion < 2) {
-               // 1.1.4: longer hit window so lava and fall deaths after a hit still count.
-               config.hitWindowMs = Math.max(config.hitWindowMs, 10000);
-               config.configVersion = 2;
-               config.save();
-            }
-
-            if (config.configVersion < 3) {
-               // 1.5.0: the buffer sizes itself to the clip settings.
-               config.bufferSeconds = 0;
-               config.configVersion = 3;
-               config.save();
-            }
-
-            return config;
          } catch (RuntimeException e) {
             throw new IOException("Invalid config: " + e.getMessage(), e);
          }
+
+         boolean upgraded = false;
+         if (config.configVersion < 2) {
+            // 1.1.4: longer hit window so lava and fall deaths after a hit still count.
+            config.hitWindowMs = Math.max(config.hitWindowMs, 10000);
+            config.configVersion = 2;
+            upgraded = true;
+         }
+
+         if (config.configVersion < 3) {
+            // 1.5.0: the buffer sizes itself to the clip settings.
+            config.bufferSeconds = 0;
+            config.configVersion = 3;
+            upgraded = true;
+         }
+
+         if (upgraded) {
+            try {
+               config.save();
+            } catch (IOException | RuntimeException e) {
+               // The settings still work for this session; only writing the upgrade back failed.
+               KillClipperClient.LOGGER.warn("Could not update {}: {}", PATH, e.toString());
+            }
+         }
+
+         return config;
       }
    }
 
@@ -150,6 +163,9 @@ public final class ClipConfig {
             Files.move(temp, PATH, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
          } catch (AtomicMoveNotSupportedException e) {
             Files.move(temp, PATH, StandardCopyOption.REPLACE_EXISTING);
+         } catch (IOException e) {
+            // Windows refuses to replace a file another program (antivirus, cloud sync) has open: write it in place.
+            Files.copy(temp, PATH, StandardCopyOption.REPLACE_EXISTING);
          }
       } finally {
          Files.deleteIfExists(temp);
