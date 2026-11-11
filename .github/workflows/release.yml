@@ -33,6 +33,10 @@ jobs:
       - name: Build
         run: ./gradlew build --no-daemon
 
+      # Only the playable jar goes on the release: the sources jar looks the same in a download list but crashes the game.
+      - name: Remove sources jar
+        run: rm -f build/libs/*-sources.jar
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -42,4 +46,3 @@ jobs:
           body_path: docs/release-notes/${{ env.TAG }}.md
           files: |
             build/libs/killclipper-*.jar
-            !build/libs/*-sources.jar
