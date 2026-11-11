@@ -182,16 +182,10 @@ public final class ClipLibraryScreen extends Screen {
       }
 
       this.status = "Opening the replay...";
-      try {
-         ReplayPlayer.start(this.client, replay);
-         ReplayPlayer started = ReplayPlayer.active();
-         if (started != null) {
-            started.openEditorOnLoad = true;
-         }
-      } catch (IOException | RuntimeException e) {
-         this.status = "Could not open the replay: " + e.getMessage();
-         KillClipperClient.LOGGER.warn("Could not open replay {}", replay, e);
-      }
+      ReplayPlayer.startAsync(this.client, replay, started -> started.openEditorOnLoad = true, error -> {
+         this.status = "Could not open the replay: " + error;
+         KillClipperClient.LOGGER.warn("Could not open replay {}: {}", replay, error);
+      });
    }
 
    /** Copies a video from anywhere on the computer into the clips folder. */

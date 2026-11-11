@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -55,6 +56,25 @@ import net.minecraft.network.packet.s2c.play.SetCameraEntityS2CPacket;
 import net.minecraft.network.packet.s2c.play.SignEditorOpenS2CPacket;
 import net.minecraft.network.packet.s2c.play.TickStepS2CPacket;
 import net.minecraft.network.packet.s2c.play.UpdateTickRateS2CPacket;
+import net.minecraft.network.packet.s2c.play.ClearTitleS2CPacket;
+import net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket;
+import net.minecraft.network.packet.s2c.play.SubtitleS2CPacket;
+import net.minecraft.network.packet.s2c.play.TitleS2CPacket;
+import net.minecraft.network.packet.s2c.play.OverlayMessageS2CPacket;
+import net.minecraft.network.packet.s2c.play.ProfilelessChatMessageS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket;
+import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
+import net.minecraft.network.packet.s2c.play.ItemPickupAnimationS2CPacket;
+import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
+import net.minecraft.network.packet.s2c.play.DamageTiltS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
+import net.minecraft.network.packet.s2c.play.EntityAnimationS2CPacket;
+import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
+import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
+import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
+import net.minecraft.network.packet.s2c.play.StopSoundS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.network.state.ConfigurationStates;
 import net.minecraft.network.state.NetworkState;
 import net.minecraft.resource.featuretoggle.FeatureFlags;
@@ -116,6 +136,8 @@ public final class ReplayPlayer {
    private long lastSelfTimeMs = -1L;
    private double[] lastSelfPose;
    private boolean closed;
+   private boolean fastForwarding;
+   private final Map<String, String> header;
    /** Real time the replay was opened, to give up on one that never loads. */
    private final long openedRealMs = System.nanoTime() / 1000000L;
    private boolean worldLoaded;
@@ -174,6 +196,7 @@ public final class ReplayPlayer {
             n++;
          }
       }
+      this.header = header;
       this.clipStartMs = parse(header.get("clipStartMs"), 0L);
       this.videoLeadMs = parse(header.get("videoLeadMs"), 0L);
       this.clipEndMs = parse(header.get("clipEndMs"), entries.isEmpty() ? 0L : entries.getLast().timeMs());
@@ -228,7 +251,17 @@ public final class ReplayPlayer {
 
    /** Opens a replay file and starts playing it. */
    public static void start(MinecraftClient client, Path file) throws IOException {
+      Loaded loaded = read(file);
       stop();
+      active = new ReplayPlayer(client, file, loaded.entries, loaded.header);
+   }
+
+   /** A replay file read into memory. */
+   record Loaded(List<ReplayLog.Entry> entries, Map<String, String> header) {
+   }
+
+   static Loaded read(Path file) throws IOException {
+      long started = System.nanoTime();
       List<ReplayLog.Entry> entries = new ArrayList<>();
       Map<String, String> header;
       try (ReplayLog.Reader reader = new ReplayLog.Reader(file)) {
@@ -242,7 +275,33 @@ public final class ReplayPlayer {
          throw new IOException("the replay is empty");
       }
 
-      active = new ReplayPlayer(client, file, entries, header);
+      KillClipperClient.LOGGER.info("Replay {}: read {} records ({} KB, {} s of recording) in {} ms", file.getFileName(), entries.size(),
+         java.nio.file.Files.size(file) / 1024L, entries.getLast().timeMs() / 1000, (System.nanoTime() - started) / 1000000L);
+      return new Loaded(entries, header);
+   }
+
+   /**
+    * Reads the replay file on a background thread so the game doesn't freeze, then starts it on the game thread.
+    * {@code ready} runs on the game thread with the new replay; {@code failed} with a message if it couldn't be read.
+    */
+   static void startAsync(MinecraftClient client, Path file, java.util.function.Consumer<ReplayPlayer> ready, java.util.function.Consumer<String> failed) {
+      CompletableFuture.supplyAsync(() -> {
+         try {
+            return read(file);
+         } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+         }
+      }).whenComplete((loaded, error) -> client.execute(() -> {
+         if (error != null) {
+            Throwable cause = error instanceof java.util.concurrent.CompletionException && error.getCause() != null ? error.getCause() : error;
+            failed.accept(cause instanceof java.io.UncheckedIOException io ? io.getCause().getMessage() : String.valueOf(cause.getMessage()));
+            return;
+         }
+
+         stop();
+         active = new ReplayPlayer(client, file, loaded.entries, loaded.header);
+         ready.accept(active);
+      }));
    }
 
    public static ReplayPlayer active() {
@@ -375,7 +434,10 @@ public final class ReplayPlayer {
       this.exportFormat = null;
       this.chatBeforeExport = null;
       try {
-         start(this.client, this.file);
+         // Going back replays from the start, reusing the records already in memory instead of reading the file again.
+         Map<String, String> header = this.header;
+         stop();
+         active = new ReplayPlayer(this.client, this.file, this.entries, header);
          ReplayPlayer restarted = active;
          restarted.seekTargetMs = target;
          restarted.mode = keepMode;
@@ -385,7 +447,7 @@ public final class ReplayPlayer {
          restarted.exportVertical = keepVertical;
          restarted.chatBeforeExport = keepChat;
          restarted.openEditorOnLoad = keepEditor && keepExport == null;
-      } catch (IOException e) {
+      } catch (RuntimeException e) {
          KillClipperClient.LOGGER.warn("Could not restart the replay", e);
          if (keepChat != null) {
             this.client.options.getChatVisibility().setValue(keepChat);
@@ -862,6 +924,8 @@ public final class ReplayPlayer {
    private void feedUntil(long target) {
       while (this.next < this.entries.size() && this.entries.get(this.next).timeMs() <= target) {
          ReplayLog.Entry entry = this.entries.get(this.next++);
+         // Effects more than a second before the point being jumped to would never be seen.
+         this.fastForwarding = entry.timeMs() < target - 1000L;
          if (entry.kind() == ReplayLog.PACKET) {
             this.deliver(entry.data());
          } else if (entry.kind() == ReplayLog.SELF) {
@@ -1092,7 +1156,7 @@ public final class ReplayPlayer {
          return;
       }
 
-      if (skipped(packet)) {
+      if (skipped(packet) || this.fastForwarding && effectOnly(packet)) {
          return;
       }
 
@@ -1114,6 +1178,32 @@ public final class ReplayPlayer {
       if (this.decodeFailures + this.handleFailures <= 5) {
          KillClipperClient.LOGGER.warn("Replay {}: {}", this.file.getFileName(), problem);
       }
+   }
+
+   /**
+    * Sounds, particles, chat and other one-off effects: they change nothing that lasts, so they are left out while
+    * the replay jumps ahead (otherwise every explosion before the clip would play at once and slow the jump down).
+    */
+   private static boolean effectOnly(Packet<?> packet) {
+      return packet instanceof PlaySoundS2CPacket
+         || packet instanceof PlaySoundFromEntityS2CPacket
+         || packet instanceof StopSoundS2CPacket
+         || packet instanceof ParticleS2CPacket
+         || packet instanceof ExplosionS2CPacket
+         || packet instanceof WorldEventS2CPacket
+         || packet instanceof EntityAnimationS2CPacket
+         || packet instanceof EntityDamageS2CPacket
+         || packet instanceof DamageTiltS2CPacket
+         || packet instanceof BlockBreakingProgressS2CPacket
+         || packet instanceof ItemPickupAnimationS2CPacket
+         || packet instanceof GameMessageS2CPacket
+         || packet instanceof ChatMessageS2CPacket
+         || packet instanceof ProfilelessChatMessageS2CPacket
+         || packet instanceof OverlayMessageS2CPacket
+         || packet instanceof TitleS2CPacket
+         || packet instanceof SubtitleS2CPacket
+         || packet instanceof TitleFadeS2CPacket
+         || packet instanceof ClearTitleS2CPacket;
    }
 
    /** Packets that would kick you, open menus or change your own controls are left out of playback. */
