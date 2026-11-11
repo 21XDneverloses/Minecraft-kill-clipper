@@ -54,6 +54,8 @@ public final class ClipConfig {
    public String clipsFolder = "";
    /** Opens a finished edit in your video player as soon as it is saved. */
    public boolean openAfterExport = true;
+   /** Your own music for highlight reels (mp3, wav, ...); empty until you choose one. */
+   public String reelMusicFile = "";
    public String ffmpegPath = "";
    public boolean restrictToListedServers = false;
    public List<String> servers = ServerDefaults.hosts();

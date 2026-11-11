@@ -146,9 +146,10 @@ public final class ClipLibraryScreen extends Screen {
          } else {
             this.client.setScreen(new VideoTrimScreen(this, this.selected));
          }
-      }).dimensions(x, bottom, 174, 20).build();
+      }).dimensions(x, bottom, 86, 20).build();
       edit.active = replay != null || video;
       this.addDrawableChild(edit);
+      this.addDrawableChild(ButtonWidget.builder(Text.literal("Highlight reel"), b -> this.client.setScreen(new HighlightReelScreen(this))).dimensions(x + 90, bottom, 84, 20).build());
       ButtonWidget share = ButtonWidget.builder(Text.literal("Share..."), b -> this.client.setScreen(new ShareScreen(this, this.selected)))
          .dimensions(x + 178, bottom, 70, 20).build();
       share.active = video;

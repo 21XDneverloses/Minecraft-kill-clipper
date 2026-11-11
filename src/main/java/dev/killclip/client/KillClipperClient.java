@@ -179,6 +179,7 @@ public final class KillClipperClient implements ClientModInitializer {
 
          this.runDevReplay(client);
          DevEditorCheck.tick(client);
+         DevReelCheck.tick(client);
          boolean dead = client.player != null && client.player.isDead();
          if (dead && !this.wasDead && !ReplayPlayer.playing() && client.world != null) {
             this.stats.death(this.host());
