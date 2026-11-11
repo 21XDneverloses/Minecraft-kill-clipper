@@ -7,6 +7,7 @@ A Fabric client mod for Minecraft 1.21.11. It keeps a rolling replay buffer of y
 - **Kills:** detected from vanilla death messages and per-server chat rules. It also counts a kill when a player you damaged dies within 10 seconds (`trackHits`, `hitWindowMs`), whatever kills them: lava, falling, fire, the void. Melee hits, your arrows and tridents, and crystals, respawn anchors and beds you set off near a player all count. This works on any server.
 - **Streaks:** kills within the streak window (default 10 s) are grouped into one clip. Two or more kills count as a streak (`streakMinKills`).
 - **Clips:** saved to `.minecraft/killclips/`. Each clip starts a few seconds before the first kill (`preRollMs`) and runs past the last one (`postRollMs`).
+- **Highlight reel:** in the clip editor (Clip Editor on the title screen), Highlight reel joins your best kills into one montage: streaks first, then the newest kills, in the order they happened. Pick the latest session, the last day, the last week or all clips, how many clips, the transition style, and the music: a built-in beat made by the mod (free to post anywhere), your own music file, or none. Cuts land on the beat. The reel is saved to `killclips/Edited/`.
 - **Settings:** Mod Menu or `/killclip menu`. FPS, resolution, quality, encoder (CPU, NVIDIA, AMD, Intel), buffer length, audio, and streak options.
 - **Commands:** `/killclip status`, `test`, `folder`, `on`, `off`, `reload`, `learn`.
 
@@ -37,6 +38,7 @@ The jar is written to `build/libs/`. Needs Java 21.
 The files in `tests/` are standalone and run with `javac` and `java`:
 
 - `StreakTrackerTest`, `HitTrackerTest`: streak grouping, hit tracking, and unpacking the bundled FFmpeg.
+- `HighlightReelTest`: picking clips, cutting them on the beat, and making reels with every transition, with and without music. Needs `ffmpeg` on PATH. Compile it with `src/main/java/dev/killclip/core/HighlightReel.java`, `ReelMusic.java`, `VideoTools.java` and `ProcessPriority.java` (the last needs JNA on the classpath, or a stub).
 - `ReplayBufferTest`, `GameAudioTest`: record synthetic frames and audio through FFmpeg and save clips. Both need `ffmpeg` on PATH.
 
 To check the whole pipeline in the game, launch with `-Dkillclip.selfTestClipSeconds=40`, which saves a test clip 40 seconds after startup. On a machine with no speakers, `-Dkillclip.audioWithoutSpeakers=true` runs game audio capture without playback.
