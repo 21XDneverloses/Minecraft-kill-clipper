@@ -33,6 +33,11 @@ public final class ClipLibraryScreen extends Screen {
       this.parent = parent;
    }
 
+   void devSelect(Path clip) {
+      this.selected = clip;
+      this.clearAndInit();
+   }
+
    private Path dir() {
       return KillClipperClient.instance().settings().clipsDir();
    }
@@ -165,6 +170,12 @@ public final class ClipLibraryScreen extends Screen {
          return;
       }
 
+      if (ExportJob.active != null) {
+         // An export left over from an earlier edit must not hold the game's clock while the replay loads.
+         ExportJob.active = null;
+      }
+
+      this.status = "Opening the replay...";
       try {
          ReplayPlayer.start(this.client, replay);
          ReplayPlayer started = ReplayPlayer.active();

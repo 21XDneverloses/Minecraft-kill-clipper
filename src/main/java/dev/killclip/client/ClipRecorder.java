@@ -343,6 +343,9 @@ public final class ClipRecorder {
       GpuBuffer readback = pooled != null ? pooled : device.createBuffer(() -> "KillClip export frame", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, size);
       this.exportInFlight++;
       job.frameCaptured();
+      if (job.frames() == 40 && Boolean.getBoolean("killclip.devFailExport")) {
+         job.failure = "dev test failure";
+      }
       encoder.copyTextureToBuffer(source, readback, 0L, () -> {
          GpuBuffer.MappedView view;
          try {

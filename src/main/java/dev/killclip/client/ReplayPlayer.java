@@ -775,6 +775,15 @@ public final class ReplayPlayer {
 
       long end = this.clipStartMs + trim[1];
       ExportJob job = ExportJob.active;
+      if (job != null && job.failure != null) {
+         String failure = job.failure;
+         this.finishExport(false);
+         this.setPaused(true);
+         exportStatus = "Export failed: " + failure + ". Try another Encoder in the settings if this keeps happening.";
+         this.client.setScreen(new ReplayEditorScreen(this));
+         return;
+      }
+
       if (job != null && this.exportStartRealMs > 0L) {
          job.progress = (float)(this.timeMs - this.clipStartMs - trim[0]) / (float)Math.max(1L, trim[1] - trim[0]);
       }

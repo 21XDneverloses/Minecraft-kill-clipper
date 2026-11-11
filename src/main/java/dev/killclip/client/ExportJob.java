@@ -23,6 +23,8 @@ public final class ExportJob {
    final int outputHeight;
    private final long baseMs;
    private int frame;
+   /** Real time of the last captured frame, to notice an export that stopped making progress. */
+   private long lastCaptureRealMs;
    /** Share of the clip done, 0..1, for the bar on screen. */
    volatile float progress;
    ExportEncoder video;
@@ -35,6 +37,7 @@ public final class ExportJob {
       this.quality = quality;
       this.outputHeight = outputHeight;
       this.baseMs = Util.getMeasuringTimeMs();
+      this.lastCaptureRealMs = this.baseMs;
    }
 
    public static boolean running() {
@@ -49,6 +52,7 @@ public final class ExportJob {
    /** Called when the frame was handed to the encoder: the next render moves one frame on. */
    void frameCaptured() {
       this.frame++;
+      this.lastCaptureRealMs = Util.getMeasuringTimeMs();
    }
 
    int frames() {
@@ -62,6 +66,19 @@ public final class ExportJob {
    public static long clock(long realMs) {
       ExportJob job = active;
       if (job == null) {
+         return realMs;
+      }
+
+      if (job.failure == null && realMs - job.lastCaptureRealMs > 15000L) {
+         job.failure = "no frame could be captured for 15 s";
+      }
+
+      if (job.failure != null || !ReplayPlayer.playing()) {
+         // A failed or orphaned export must never hold the game's clock: the game would stop ticking.
+         if (!ReplayPlayer.playing()) {
+            active = null;
+         }
+
          return realMs;
       }
 

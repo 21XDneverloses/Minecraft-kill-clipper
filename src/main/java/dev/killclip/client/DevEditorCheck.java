@@ -60,8 +60,21 @@ final class DevEditorCheck {
             }
             case 6 -> {
                shot(client, "editor-share.png");
-               ReplayPlayer.start(client, Path.of(FILE));
-               ReplayPlayer.active().openEditorOnLoad = true;
+               if (Boolean.getBoolean("killclip.devViaLibrary")) {
+                  // Like a player: pick the clip in the library and press Edit.
+                  ClipLibraryScreen library = new ClipLibraryScreen(new TitleScreen());
+                  client.setScreen(library);
+                  library.devSelect(Path.of(FILE.replace(".kcreplay", ".mp4")));
+                  for (var child : library.children()) {
+                     if (child instanceof net.minecraft.client.gui.widget.ButtonWidget button && button.getMessage().getString().startsWith("Edit")) {
+                        KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR pressing {} (active {})", button.getMessage().getString(), button.active);
+                        button.onPress(null);
+                     }
+                  }
+               } else {
+                  ReplayPlayer.start(client, Path.of(FILE));
+                  ReplayPlayer.active().openEditorOnLoad = true;
+               }
             }
             case 7 -> {
                ReplayPlayer replay = ReplayPlayer.active();
@@ -98,6 +111,30 @@ final class DevEditorCheck {
 
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR status: {}", ReplayPlayer.exportStatus);
                shot(client, "editor-saved.png");
+            }
+            case 11 -> {
+               // Back to the library and press Edit again, like a player after an export.
+               ReplayPlayer.stop();
+               ClipLibraryScreen library = new ClipLibraryScreen(new TitleScreen());
+               client.setScreen(library);
+               library.devSelect(Path.of(FILE.replace(".kcreplay", ".mp4")));
+               for (var child : library.children()) {
+                  if (child instanceof net.minecraft.client.gui.widget.ButtonWidget button && button.getMessage().getString().startsWith("Edit")) {
+                     button.onPress(null);
+                  }
+               }
+            }
+            case 12 -> {
+               if (!(client.currentScreen instanceof ReplayEditorScreen)) {
+                  if (now - stepAt > 30000L) {
+                     KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR reopen FAILED, screen {}", client.currentScreen);
+                     step = 99;
+                  }
+                  return;
+               }
+
+               KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR reopened editor after export");
+               shot(client, "editor-reopened.png");
             }
             default -> {
                return;
