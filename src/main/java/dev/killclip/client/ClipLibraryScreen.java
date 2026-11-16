@@ -21,7 +21,7 @@ import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 /** The clip editor's main-menu library: every clip in the clips folder, with editing for each. */
 @Environment(EnvType.CLIENT)
-public final class ClipLibraryScreen extends Screen {
+public final class ClipLibraryScreen extends FlatScreen {
    private final Screen parent;
    private final List<Path> clips = new ArrayList<>();
    private int page;
@@ -123,12 +123,13 @@ public final class ClipLibraryScreen extends Screen {
          }
 
          Path clip = this.clips.get(index);
-         String label = clip.getFileName().toString() + (findReplay(clip) != null ? "  [camera views]" : "");
-         ButtonWidget row = ButtonWidget.builder(Text.literal(this.textRenderer.trimToWidth((clip.equals(this.selected) ? "> " : "") + label, listWidth - 10)), b -> {
+         FlatButton row = FlatButton.of(Text.literal(clip.getFileName().toString()), b -> {
             this.selected = clip;
             this.status = "";
             this.clearAndInit();
-         }).dimensions(x, y + i * 22, listWidth, 20).build();
+         }).dimensions(x, y + i * 22, listWidth, 20).row().build();
+         // Clips with a fight replay can change camera views in the editor.
+         row.selected(clip.equals(this.selected)).badge(findReplay(clip) != null ? "REPLAY" : "");
          this.addDrawableChild(row);
       }
 
@@ -140,36 +141,36 @@ public final class ClipLibraryScreen extends Screen {
       Path replay = this.selected == null ? null : findReplay(this.selected);
       boolean video = this.selected != null && VideoTools.isVideo(this.selected);
       // One editor: a clip with its fight replay opens the full editor (trim and camera); a plain video opens trim.
-      ButtonWidget edit = ButtonWidget.builder(Text.literal(replay != null ? "Edit" : "Edit (trim only)"), b -> {
+      ButtonWidget edit = FlatButton.of(Text.literal(replay != null ? "Edit" : "Edit (trim only)"), b -> {
          if (replay != null) {
             this.openReplay(replay);
          } else {
             this.client.setScreen(new VideoTrimScreen(this, this.selected));
          }
-      }).dimensions(x, bottom, 86, 20).build();
+      }).dimensions(x, bottom, 86, 20).primary().build();
       edit.active = replay != null || video;
       this.addDrawableChild(edit);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Highlight reel"), b -> this.client.setScreen(new HighlightReelScreen(this))).dimensions(x + 90, bottom, 84, 20).build());
-      ButtonWidget share = ButtonWidget.builder(Text.literal("Share..."), b -> this.client.setScreen(new ShareScreen(this, this.selected)))
+      this.addDrawableChild(FlatButton.of(Text.literal("Highlight reel"), b -> this.client.setScreen(new HighlightReelScreen(this))).dimensions(x + 90, bottom, 84, 20).build());
+      ButtonWidget share = FlatButton.of(Text.literal("Share..."), b -> this.client.setScreen(new ShareScreen(this, this.selected)))
          .dimensions(x + 178, bottom, 70, 20).build();
       share.active = video;
       this.addDrawableChild(share);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Import video..."), b -> this.importVideo()).dimensions(x + 252, bottom, listWidth - 252, 20).build());
-      ButtonWidget previous = ButtonWidget.builder(Text.literal("<"), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Import video..."), b -> this.importVideo()).dimensions(x + 252, bottom, listWidth - 252, 20).build());
+      ButtonWidget previous = FlatButton.of(Text.literal("<"), b -> {
          this.page--;
          this.clearAndInit();
       }).dimensions(x, bottom + 24, 30, 20).build();
       previous.active = this.page > 0;
       this.addDrawableChild(previous);
-      ButtonWidget next = ButtonWidget.builder(Text.literal(">"), b -> {
+      ButtonWidget next = FlatButton.of(Text.literal(">"), b -> {
          this.page++;
          this.clearAndInit();
       }).dimensions(x + 34, bottom + 24, 30, 20).build();
       next.active = this.page < pages - 1;
       this.addDrawableChild(next);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Stats"), b -> this.client.setScreen(new StatsScreen(this))).dimensions(x + 68, bottom + 24, 60, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Open folder"), b -> KillClipperClient.instance().openClipsFolder()).dimensions(x + 132, bottom + 24, 90, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.close()).dimensions(x + 226, bottom + 24, listWidth - 226, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Stats"), b -> this.client.setScreen(new StatsScreen(this))).dimensions(x + 68, bottom + 24, 60, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Open folder"), b -> KillClipperClient.instance().openClipsFolder()).dimensions(x + 132, bottom + 24, 90, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Done"), b -> this.close()).dimensions(x + 226, bottom + 24, listWidth - 226, 20).build());
    }
 
    private void openReplay(Path replay) {
@@ -225,11 +226,19 @@ public final class ClipLibraryScreen extends Screen {
    }
 
    @Override
-   public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      super.render(context, mouseX, mouseY, deltaTicks);
-      context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 12, 0xFFFFFFFF);
+   protected void drawPanels(DrawContext context, float alpha) {
+      int listWidth = Math.min(340, this.width - 20);
+      int x = this.width / 2 - listWidth / 2;
+      Ui.panel(context, x - 6, 26, x + listWidth + 6, this.height - 4, alpha);
+      // A hairline between the list and the actions.
+      context.fill(x, this.height - 57, x + listWidth, this.height - 56, Ui.fade(Ui.LINE, alpha));
+   }
+
+   @Override
+   protected void drawContent(DrawContext context, int mouseX, int mouseY, float deltaTicks, float alpha) {
+      Ui.title(context, this.textRenderer, this.title, this.width / 2, 10, alpha);
       if (!this.status.isEmpty()) {
-         context.drawCenteredTextWithShadow(this.textRenderer, this.status, this.width / 2, this.height - 66, 0xFFFFFF55);
+         Ui.centered(context, this.textRenderer, this.status, this.width / 2, this.height - 68, Ui.fade(Ui.statusColor(this.status), alpha));
       }
    }
 

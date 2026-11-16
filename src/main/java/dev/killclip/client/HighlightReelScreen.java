@@ -24,7 +24,7 @@ import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 /** Makes a montage of a session's best kills: picks the clips, then joins them with transitions and music. */
 @Environment(EnvType.CLIENT)
-public final class HighlightReelScreen extends Screen {
+public final class HighlightReelScreen extends FlatScreen {
    private static final int[] SIZES = {8, 10, 15, 20, 3, 5};
    private static final double[] GAME_VOLUMES = {0.6, 0.3, 0.0, 1.0};
    private static final List<String> MUSIC_TYPES = List.of("mp3", "wav", "ogg", "m4a", "flac", "aac", "opus");
@@ -88,39 +88,39 @@ public final class HighlightReelScreen extends Screen {
    protected void init() {
       this.choose();
       int x = this.width / 2 - 152;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Clips: " + range.label), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Clips: " + range.label), b -> {
          range = HighlightReel.Range.values()[(range.ordinal() + 1) % HighlightReel.Range.values().length];
          this.clearAndInit();
-      }).dimensions(x, 26, 150, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Use the best: " + SIZES[size] + " clips"), b -> {
+      }).dimensions(x, 26, 150, 20).setting().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Use the best: " + SIZES[size] + " clips"), b -> {
          size = (size + 1) % SIZES.length;
          this.clearAndInit();
-      }).dimensions(x + 154, 26, 150, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Transitions: " + transition.label), b -> {
+      }).dimensions(x + 154, 26, 150, 20).setting().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Transitions: " + transition.label), b -> {
          transition = HighlightReel.Transition.values()[(transition.ordinal() + 1) % HighlightReel.Transition.values().length];
          this.clearAndInit();
-      }).dimensions(x, 48, 150, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Music: " + music.label), b -> {
+      }).dimensions(x, 48, 150, 20).setting().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Music: " + music.label), b -> {
          music = Music.values()[(music.ordinal() + 1) % Music.values().length];
          this.clearAndInit();
-      }).dimensions(x + 154, 48, 150, 20).build());
+      }).dimensions(x + 154, 48, 150, 20).setting().build());
       int percent = (int)Math.round(GAME_VOLUMES[gameVolume] * 100);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Game sound: " + (percent == 0 ? "Off" : percent + "%")), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Game sound: " + (percent == 0 ? "Off" : percent + "%")), b -> {
          gameVolume = (gameVolume + 1) % GAME_VOLUMES.length;
          this.clearAndInit();
-      }).dimensions(x, 70, 150, 20).build());
+      }).dimensions(x, 70, 150, 20).setting().build());
       Path own = musicFile();
       String ownLabel = own == null ? "Choose music file..." : this.textRenderer.trimToWidth("File: " + own.getFileName(), 140);
-      ButtonWidget pickMusic = ButtonWidget.builder(Text.literal(ownLabel), b -> this.chooseMusic()).dimensions(x + 154, 70, 150, 20).build();
+      ButtonWidget pickMusic = FlatButton.of(Text.literal(ownLabel), b -> this.chooseMusic()).dimensions(x + 154, 70, 150, 20).build();
       pickMusic.active = music == Music.OWN;
       this.addDrawableChild(pickMusic);
 
       int bottom = this.height - 26;
-      ButtonWidget make = ButtonWidget.builder(Text.literal("Make highlight reel"), b -> this.make()).dimensions(x, bottom, 130, 20).build();
+      ButtonWidget make = FlatButton.of(Text.literal("Make highlight reel"), b -> this.make()).dimensions(x, bottom, 130, 20).primary().build();
       make.active = !busy && !this.picked.isEmpty();
       this.addDrawableChild(make);
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Open Edited folder"), b -> KillClipperClient.instance().openEditedFolder()).dimensions(x + 134, bottom, 106, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Back"), b -> this.close()).dimensions(x + 244, bottom, 60, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Open Edited folder"), b -> KillClipperClient.instance().openEditedFolder()).dimensions(x + 134, bottom, 106, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Back"), b -> this.close()).dimensions(x + 244, bottom, 60, 20).build());
    }
 
    private void chooseMusic() {
@@ -246,37 +246,59 @@ public final class HighlightReelScreen extends Screen {
    }
 
    @Override
-   public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      super.render(context, mouseX, mouseY, deltaTicks);
-      context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 10, 0xFFFFFFFF);
+   protected void drawPanels(DrawContext context, float alpha) {
       int x = this.width / 2 - 152;
-      int y = 96;
-      int barTop = this.height - 40;
+      Ui.panel(context, x - 8, 20, x + 312, this.height - 32, alpha);
+   }
+
+   @Override
+   protected void drawContent(DrawContext context, int mouseX, int mouseY, float deltaTicks, float alpha) {
+      Ui.title(context, this.textRenderer, this.title, this.width / 2, 5, alpha);
+      int x = this.width / 2 - 152;
+      int y = 98;
+      int barTop = this.height - 44;
+      context.fill(x, y - 4, x + 304, y - 3, Ui.fade(Ui.LINE, alpha));
       if (this.picked.isEmpty()) {
          String none = this.available == 0 && range != HighlightReel.Range.ALL ? "No kill clips in this range. Try \"All clips\"." : "No kill clips yet. Play a match first.";
-         context.drawCenteredTextWithShadow(this.textRenderer, none, this.width / 2, y, 0xFFFFFF55);
+         Ui.centered(context, this.textRenderer, none, this.width / 2, y + 4, Ui.fade(Ui.MUTED, alpha));
       } else {
          int kills = this.picked.stream().mapToInt(HighlightReel.Clip::kills).sum();
-         String summary = this.picked.size() + " of " + this.available + " clips, " + kills + " kills, about " + time(this.estimate());
-         context.drawTextWithShadow(this.textRenderer, summary, x, y, 0xFF55FF55);
-         y += 12;
+         Ui.text(context, this.textRenderer, this.picked.size() + " of " + this.available + " clips", x, y, Ui.fade(Ui.TEXT, alpha));
+         Ui.right(context, this.textRenderer, kills + " kills  \u00b7  about " + time(this.estimate()), x + 304, y, Ui.fade(Ui.MUTED, alpha));
+         y += 13;
          int rows = Math.max(0, (barTop - 14 - y) / 10);
          for (int i = 0; i < this.picked.size() && i < rows; i++) {
             HighlightReel.Clip clip = this.picked.get(i);
             boolean last = i == rows - 1 && this.picked.size() > rows;
-            String line = last ? "... and " + (this.picked.size() - i) + " more" : (i + 1) + ". " + clip.file().getFileName() + (clip.kills() > 1 ? "  (" + clip.kills() + " kills)" : "");
-            context.drawTextWithShadow(this.textRenderer, this.textRenderer.trimToWidth(line, 304), x, y + i * 10, clip.kills() > 1 && !last ? 0xFFFFAA00 : 0xFFAAAAAA);
+            int ly = y + i * 10;
+            if (last) {
+               Ui.text(context, this.textRenderer, "... and " + (this.picked.size() - i) + " more", x + 14, ly, Ui.fade(Ui.FAINT, alpha));
+               continue;
+            }
+
+            Ui.right(context, this.textRenderer, String.valueOf(i + 1), x + 9, ly, Ui.fade(Ui.FAINT, alpha));
+            boolean streak = clip.kills() > 1;
+            String name = clip.file().getFileName().toString();
+            int nameRight = x + 304;
+            if (streak) {
+               String badge = clip.kills() + " KILLS";
+               int bw = this.textRenderer.getWidth(badge) + 6;
+               context.fill(x + 304 - bw, ly - 1, x + 304, ly + 9, Ui.fade(0x33FF4655, alpha));
+               Ui.text(context, this.textRenderer, badge, x + 307 - bw, ly, Ui.fade(0xFFFF9AA2, alpha));
+               nameRight -= bw + 6;
+            }
+
+            Ui.text(context, this.textRenderer, FlatButton.trim(this.textRenderer, name, nameRight - x - 14), x + 14, ly, Ui.fade(streak ? Ui.TEXT : 0xFFB4B9C0, alpha));
          }
       }
 
       if (busy) {
-         context.fill(x, barTop, x + 304, barTop + 6, 0xFF333333);
-         context.fill(x, barTop, x + (int)(304 * Math.max(0.0, Math.min(1.0, progress))), barTop + 6, 0xFF55FF55);
+         Ui.progress(context, x, barTop + 4, 304, 3, (float)progress, alpha);
       }
 
       String line = busy && progress > 0.0 ? status + " " + (int)(progress * 100) + "%" : status;
       if (!line.isEmpty()) {
-         context.drawCenteredTextWithShadow(this.textRenderer, line, this.width / 2, barTop - 12, 0xFFFFFF55);
+         Ui.centered(context, this.textRenderer, line, this.width / 2, barTop - 8, Ui.fade(busy ? Ui.TEXT : Ui.statusColor(line), alpha));
       }
    }
 
