@@ -34,7 +34,13 @@ final class DevReelCheck {
                return;
             }
 
-            client.setScreen(new ClipLibraryScreen(client.currentScreen));
+            ClipLibraryScreen library = new ClipLibraryScreen(client.currentScreen);
+            client.setScreen(library);
+            // Show a picked clip in the screenshot when the dev clips folder has the self-test one.
+            java.nio.file.Path picked = KillClipperClient.instance().settings().clipsDir().resolve("selftest.mp4");
+            if (java.nio.file.Files.isRegularFile(picked)) {
+               library.devSelect(picked);
+            }
          }
          case 1 -> {
             shot(client, "reel-library.png");
@@ -57,7 +63,9 @@ final class DevReelCheck {
 
             KillClipperClient.LOGGER.info("KILLCLIP_DEVREEL finished: {}", HighlightReelScreen.status());
             shot(client, "reel-done.png");
+            client.setScreen(new KillClipSettingsScreen(client.currentScreen));
          }
+         case 5 -> shot(client, "reel-settings.png");
          default -> {
             return;
          }

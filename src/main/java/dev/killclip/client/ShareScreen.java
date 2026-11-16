@@ -25,7 +25,7 @@ import net.minecraft.text.Text;
  * Discord when pasted. Also makes vertical 9:16 copies for YouTube Shorts, TikTok and Reels.
  */
 @Environment(EnvType.CLIENT)
-final class ShareScreen extends Screen {
+final class ShareScreen extends FlatScreen {
    private static final String HOST = "https://catbox.moe/user/api.php";
    /** catbox.moe takes files up to 200 MB. */
    static final long UPLOAD_LIMIT = 190L * 1000L * 1000L;
@@ -47,19 +47,19 @@ final class ShareScreen extends Screen {
    protected void init() {
       int x = this.width / 2 - 160;
       int y = 60;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Get a link (copies it)"), b -> this.upload()).dimensions(x, y, 320, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(this.shapeLabel(), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Get a link (copies it)"), b -> this.upload()).dimensions(x, y, 320, 20).primary().build());
+      this.addDrawableChild(FlatButton.of(this.shapeLabel(), b -> {
          this.vertical = !this.vertical;
          b.setMessage(this.shapeLabel());
-      }).dimensions(x, y + 24, 158, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Make 9:16 copy only"), b -> {
+      }).dimensions(x, y + 24, 158, 20).setting().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Make 9:16 copy only"), b -> {
          KillClipperClient.instance().makeVertical(this.clip);
          this.status = "Making the vertical copy; it appears in your clips folder.";
       }).dimensions(x + 162, y + 24, 158, 20).build());
-      this.copyButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Copy link again"), b -> this.copyLink())
+      this.copyButton = this.addDrawableChild(FlatButton.of(Text.literal("Copy link again"), b -> this.copyLink())
          .dimensions(x, y + 48, 158, 20).build());
       this.copyButton.active = !this.link.isEmpty();
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Back"), b -> this.close()).dimensions(x + 162, y + 48, 158, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Back"), b -> this.close()).dimensions(x + 162, y + 48, 158, 20).build());
    }
 
    private Text shapeLabel() {
@@ -160,14 +160,19 @@ final class ShareScreen extends Screen {
    }
 
    @Override
-   public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      super.render(context, mouseX, mouseY, deltaTicks);
-      context.drawCenteredTextWithShadow(this.textRenderer, this.clip.getFileName().toString(), this.width / 2, 14, 0xFFFFFFFF);
-      context.drawCenteredTextWithShadow(this.textRenderer, "Uploads to catbox.moe. Anyone with the link can watch it.", this.width / 2, 36, 0xFFAAAAAA);
+   protected void drawPanels(DrawContext context, float alpha) {
+      Ui.panel(context, this.width / 2 - 168, 52, this.width / 2 + 168, 136, alpha);
+   }
+
+   @Override
+   protected void drawContent(DrawContext context, int mouseX, int mouseY, float deltaTicks, float alpha) {
+      Ui.title(context, this.textRenderer, FlatButton.trim(this.textRenderer, this.clip.getFileName().toString(), this.width - 20), this.width / 2, 14, alpha);
+      Ui.centered(context, this.textRenderer, "Uploads to catbox.moe. Anyone with the link can watch it.", this.width / 2, 34, Ui.fade(Ui.MUTED, alpha));
       if (!this.status.isEmpty()) {
-         int y = 140;
+         int y = 146;
+         int color = Ui.fade(Ui.statusColor(this.status), alpha);
          for (var line : this.textRenderer.wrapLines(Text.literal(this.status), this.width - 40)) {
-            context.drawCenteredTextWithShadow(this.textRenderer, line, this.width / 2, y, 0xFFFFFF55);
+            context.drawText(this.textRenderer, line, this.width / 2 - this.textRenderer.getWidth(line) / 2, y, color, false);
             y += 10;
          }
       }

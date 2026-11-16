@@ -881,7 +881,13 @@ public final class KillClipperClient implements ClientModInitializer {
    private static void notify(String message, Formatting color) {
       MinecraftClient client = MinecraftClient.getInstance();
       if (client.player != null) {
-         client.player.sendMessage(Text.literal(message).formatted(color), true);
+         // Action bar text in the mod's colours: the leading mark (dot, tick, cross) coloured, the words soft white.
+         int mark = color == Formatting.GREEN ? Ui.SUCCESS : color == Formatting.RED ? Ui.ERROR : Ui.ACCENT;
+         int space = message.indexOf(' ');
+         Text text = space == 1
+            ? Text.literal(message.substring(0, 1)).withColor(mark & 0xFFFFFF).append(Text.literal(message.substring(1)).withColor(0xE6E8EB))
+            : Text.literal(message).withColor(mark & 0xFFFFFF);
+         client.player.sendMessage(text, true);
       }
    }
 

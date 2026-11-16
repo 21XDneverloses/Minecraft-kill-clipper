@@ -54,7 +54,7 @@ public final class HighlightReel {
    private HighlightReel() {
    }
 
-   /** A saved kill clip: when it was made, how many kills are in it and, for clips from v1.13 on, what each kill was. */
+   /** A saved kill clip: when it was made, how many kills are in it and, for clips from v1.14 on, what each kill was. */
    public record Clip(Path file, long timeMs, int kills, List<ClipMeta.Kill> moments) {
       public Clip(Path file, long timeMs, int kills) {
          this(file, timeMs, kills, List.of());
