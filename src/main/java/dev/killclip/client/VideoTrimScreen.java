@@ -13,7 +13,6 @@ import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.text.Text;
@@ -21,7 +20,7 @@ import net.minecraft.util.Identifier;
 
 /** Trims any video and saves it as MP4, MOV or MKV, with a preview frame of where you are. */
 @Environment(EnvType.CLIENT)
-final class VideoTrimScreen extends Screen {
+final class VideoTrimScreen extends FlatScreen {
    private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
    private static final Identifier PREVIEW = Identifier.of("killclipper", "editor_preview");
    private final Screen parent;
@@ -63,14 +62,14 @@ final class VideoTrimScreen extends Screen {
    protected void init() {
       int y = this.height - 28;
       int x = this.width / 2 - 200;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Set start"), b -> this.start = Math.min(this.position, this.end - 0.1)).dimensions(x, y, 70, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Set end"), b -> this.end = Math.max(this.position, this.start + 0.1)).dimensions(x + 74, y, 70, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(this.formatLabel(), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Set start"), b -> this.start = Math.min(this.position, this.end - 0.1)).dimensions(x, y, 70, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Set end"), b -> this.end = Math.max(this.position, this.start + 0.1)).dimensions(x + 74, y, 70, 20).build());
+      this.addDrawableChild(FlatButton.of(this.formatLabel(), b -> {
          this.format = FORMATS.get((FORMATS.indexOf(this.format) + 1) % FORMATS.size());
          b.setMessage(this.formatLabel());
       }).dimensions(x + 148, y, 90, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.export()).dimensions(x + 242, y, 76, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Back"), b -> this.close()).dimensions(x + 322, y, 78, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Export"), b -> this.export()).dimensions(x + 242, y, 76, 20).primary().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Back"), b -> this.close()).dimensions(x + 322, y, 78, 20).build());
    }
 
    private Text formatLabel() {
@@ -158,12 +157,18 @@ final class VideoTrimScreen extends Screen {
    }
 
    @Override
-   public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      super.render(context, mouseX, mouseY, deltaTicks);
+   protected void drawPanels(DrawContext context, float alpha) {
+      // The controls sit on one strip along the bottom, like a video player.
+      context.fill(0, this.barTop() - 22, this.width, this.height, Ui.fade(Ui.PANEL, alpha));
+      context.fill(0, this.barTop() - 22, this.width, this.barTop() - 21, Ui.fade(Ui.LINE, alpha));
+   }
+
+   @Override
+   protected void drawContent(DrawContext context, int mouseX, int mouseY, float deltaTicks, float alpha) {
       this.refreshPreview();
-      context.drawCenteredTextWithShadow(this.textRenderer, this.video.getFileName().toString(), this.width / 2, 8, 0xFFFFFFFF);
+      Ui.title(context, this.textRenderer, FlatButton.trim(this.textRenderer, this.video.getFileName().toString(), this.width - 20), this.width / 2, 6, alpha);
       int areaTop = 22;
-      int areaBottom = this.barTop() - 16;
+      int areaBottom = this.barTop() - 36;
       if (this.previewWidth > 0) {
          int maxW = this.width - 40;
          int maxH = areaBottom - areaTop;
@@ -171,6 +176,7 @@ final class VideoTrimScreen extends Screen {
          int w = (int)(this.previewWidth * scale);
          int h = (int)(this.previewHeight * scale);
          int x = this.width / 2 - w / 2;
+         Ui.outline(context, x - 1, areaTop - 1, x + w + 1, areaTop + h + 1, Ui.fade(Ui.LINE_STRONG, alpha));
          context.drawTexture(RenderPipelines.GUI_TEXTURED, PREVIEW, x, areaTop, 0.0F, 0.0F, w, h, w, h);
       }
 
@@ -178,19 +184,24 @@ final class VideoTrimScreen extends Screen {
       int right = this.barRight();
       int top = this.barTop();
       double length = Math.max(0.001, this.length);
-      context.fill(left, top, right, top + 8, 0xFF333333);
+      context.fill(left, top + 2, right, top + 6, Ui.fade(Ui.RAISED, alpha));
       if (this.end > 0) {
          int s = left + (int)((right - left) * this.start / length);
          int e = left + (int)((right - left) * this.end / length);
-         context.fill(s, top, e, top + 8, 0xFF55AA55);
+         // The part that is kept, with handles at both ends.
+         context.fill(s, top, e, top + 8, Ui.fade(Ui.KEPT, alpha));
+         context.fill(s, top - 1, s + 2, top + 9, Ui.fade(0xFFFFC53D, alpha));
+         context.fill(e - 2, top - 1, e, top + 9, Ui.fade(0xFFFFC53D, alpha));
       }
 
       int p = left + (int)((right - left) * Math.min(1.0, this.position / length));
-      context.fill(p - 1, top - 4, p + 1, top + 12, 0xFFFFFFFF);
-      String times = String.format(Locale.ROOT, "%.1f s   (keep %.1f - %.1f s of %.1f s)", this.position, this.start, Math.max(0, this.end), Math.max(0, this.length));
-      context.drawTextWithShadow(this.textRenderer, times, left, top - 12, 0xFFFFFFFF);
+      context.fill(p - 1, top - 4, p + 1, top + 12, Ui.fade(Ui.TEXT, alpha));
+      context.fill(p - 3, top - 5, p + 3, top - 3, Ui.fade(Ui.TEXT, alpha));
+      Ui.text(context, this.textRenderer, String.format(Locale.ROOT, "%.1f s", this.position), left, top - 15, Ui.fade(Ui.TEXT, alpha));
+      String kept = String.format(Locale.ROOT, "keep %.1f - %.1f s of %.1f s", this.start, Math.max(0, this.end), Math.max(0, this.length));
+      Ui.right(context, this.textRenderer, kept, right, top - 15, Ui.fade(Ui.MUTED, alpha));
       if (!this.status.isEmpty()) {
-         context.drawCenteredTextWithShadow(this.textRenderer, this.status, this.width / 2, areaBottom + 2, 0xFFFFFF55);
+         Ui.centered(context, this.textRenderer, this.status, this.width / 2, areaBottom + 4, Ui.fade(Ui.statusColor(this.status), alpha));
       }
    }
 

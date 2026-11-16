@@ -7,11 +7,10 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 @Environment(EnvType.CLIENT)
-public final class KillClipSettingsScreen extends Screen {
+public final class KillClipSettingsScreen extends FlatScreen {
    private static final List<String> AUDIO = List.of("game", "system", "off");
    private static final List<Integer> FPS = List.of(30, 60, 120);
    private static final List<Integer> RESOLUTIONS = List.of(480, 720, 1080, 1440, 0);
@@ -34,38 +33,38 @@ public final class KillClipSettingsScreen extends Screen {
 
    protected void init() {
       int x = this.width / 2 - 150;
-      int y = Math.max(36, this.height / 2 - 104);
+      int y = this.top();
       this.button(x, y, 300, () -> onOff("Automatic clipping", this.draft.enabled), c -> c.enabled = !c.enabled);
-      this.button(x, y + 24, 148, () -> onOff("Recording", this.draft.recording), c -> c.recording = !c.recording);
-      this.button(x + 152, y + 24, 148, () -> onOff("Notifications", this.draft.feedback), c -> c.feedback = !c.feedback);
-      this.button(x, y + 48, 148, () -> "FPS: " + this.draft.fps, c -> c.fps = next(FPS, c.fps));
-      this.button(x + 152, y + 48, 148, () -> "Resolution: " + (this.draft.resolution == 0 ? "Native" : this.draft.resolution + "p"),
+      this.button(x, y + 22, 148, () -> onOff("Recording", this.draft.recording), c -> c.recording = !c.recording);
+      this.button(x + 152, y + 22, 148, () -> onOff("Notifications", this.draft.feedback), c -> c.feedback = !c.feedback);
+      this.button(x, y + 44, 148, () -> "FPS: " + this.draft.fps, c -> c.fps = next(FPS, c.fps));
+      this.button(x + 152, y + 44, 148, () -> "Resolution: " + (this.draft.resolution == 0 ? "Native" : this.draft.resolution + "p"),
          c -> c.resolution = next(RESOLUTIONS, c.resolution));
-      this.button(x, y + 72, 148, () -> "Quality: " + qualityName(this.draft.quality), c -> c.quality = next(QUALITIES, c.quality));
-      this.button(x + 152, y + 72, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
-      this.button(x + 152, y + 144, 148, () -> "File type: " + this.draft.fileFormat.toUpperCase(java.util.Locale.ROOT), c -> c.fileFormat = next(FORMATS, c.fileFormat));
-      this.button(x, y + 144, 148, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
-      this.button(x, y + 96, 148, () -> "Buffer: " + (this.draft.bufferSeconds == 0 ? "Auto (" + this.draft.effectiveBufferSeconds() + " s)" : this.draft.bufferSeconds + " s"), c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
-      this.button(x + 152, y + 96, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
-      this.button(x, y + 120, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
-      this.button(x + 152, y + 120, 148, () -> "Streak window: " + this.draft.streakGapMs / 1000 + " s", c -> {
+      this.button(x, y + 66, 148, () -> "Quality: " + qualityName(this.draft.quality), c -> c.quality = next(QUALITIES, c.quality));
+      this.button(x + 152, y + 66, 148, () -> "Encoder: " + encoderName(this.draft.encoder), c -> c.encoder = next(ENCODERS, c.encoder));
+      this.button(x + 152, y + 132, 148, () -> "File type: " + this.draft.fileFormat.toUpperCase(java.util.Locale.ROOT), c -> c.fileFormat = next(FORMATS, c.fileFormat));
+      this.button(x, y + 132, 148, () -> "Audio: " + audioName(this.draft.audioSource), c -> c.audioSource = next(AUDIO, c.audioSource));
+      this.button(x, y + 88, 148, () -> "Buffer: " + (this.draft.bufferSeconds == 0 ? "Auto (" + this.draft.effectiveBufferSeconds() + " s)" : this.draft.bufferSeconds + " s"), c -> c.bufferSeconds = next(BUFFERS, c.bufferSeconds));
+      this.button(x + 152, y + 88, 148, () -> "Before kill: " + this.draft.preRollMs / 1000 + " s", c -> c.preRollMs = next(PRE_ROLLS, c.preRollMs));
+      this.button(x, y + 110, 148, () -> "Streak: " + this.draft.streakMinKills + "+ kills", c -> c.streakMinKills = next(STREAK_KILLS, c.streakMinKills));
+      this.button(x + 152, y + 110, 148, () -> "Streak window: " + this.draft.streakGapMs / 1000 + " s", c -> {
          c.streakGapMs = next(STREAK_GAPS, c.streakGapMs);
          c.postRollMs = Math.min(c.postRollMs, c.streakGapMs);
       });
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Open clips folder"), button -> KillClipperClient.instance().openClipsFolder())
-         .dimensions(x, y + 168, 148, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Test clip (last 10 s)"), button -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Open clips folder"), button -> KillClipperClient.instance().openClipsFolder())
+         .dimensions(x, y + 154, 148, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Test clip (last 10 s)"), button -> {
          this.client.setScreen(this.parent);
          KillClipperClient.instance().testClip();
-      }).dimensions(x + 152, y + 168, 148, 20).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), button -> this.close()).dimensions(x, y + 192, 300, 20).build());
+      }).dimensions(x + 152, y + 154, 148, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Done"), button -> this.close()).dimensions(x, y + 176, 300, 20).primary().build());
    }
 
    private void button(int x, int y, int width, Supplier<String> label, Consumer<ClipConfig> edit) {
-      this.addDrawableChild(ButtonWidget.builder(Text.literal(label.get()), button -> {
+      this.addDrawableChild(FlatButton.of(Text.literal(label.get()), button -> {
          this.change(edit);
          button.setMessage(Text.literal(label.get()));
-      }).dimensions(x, y, width, 20).build());
+      }).dimensions(x, y, width, 20).setting().build());
    }
 
    private static <T> T next(List<T> options, T current) {
@@ -107,13 +106,25 @@ public final class KillClipSettingsScreen extends Screen {
       }
    }
 
-   public void render(DrawContext graphics, int mouseX, int mouseY, float delta) {
-      super.render(graphics, mouseX, mouseY, delta);
-      graphics.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 16, -1);
-      int bottom = Math.max(36, this.height / 2 - 104) + 218;
-      graphics.drawCenteredTextWithShadow(this.textRenderer, "Clips save as mp4 in the killclips folder. Settings save automatically.", this.width / 2, bottom, -5592406);
+   /** The first row of buttons: centred, but never under the title. */
+   private int top() {
+      return Math.max(28, this.height / 2 - 98);
+   }
+
+   @Override
+   protected void drawPanels(DrawContext graphics, float alpha) {
+      int top = this.top();
+      Ui.panel(graphics, this.width / 2 - 158, top - 6, this.width / 2 + 158, top + 201, alpha);
+   }
+
+   @Override
+   protected void drawContent(DrawContext graphics, int mouseX, int mouseY, float delta, float alpha) {
+      int top = this.top();
+      Ui.title(graphics, this.textRenderer, this.title, this.width / 2, Math.min(16, top - 22), alpha);
+      int bottom = top + 204;
+      Ui.centered(graphics, this.textRenderer, "Clips save as mp4 in the killclips folder. Settings save automatically.", this.width / 2, bottom, Ui.fade(Ui.MUTED, alpha));
       if (!this.error.isEmpty()) {
-         graphics.drawCenteredTextWithShadow(this.textRenderer, this.error, this.width / 2, bottom + 12, -34953);
+         Ui.centered(graphics, this.textRenderer, this.error, this.width / 2, bottom + 12, Ui.fade(Ui.ERROR, alpha));
       }
    }
 

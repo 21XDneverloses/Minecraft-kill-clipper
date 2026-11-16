@@ -112,8 +112,9 @@ public final class ExportJob {
       int width = framebuffer.textureWidth;
       int height = framebuffer.textureHeight;
       int barWidth = Math.max(40, width * 3 / 5);
-      int barHeight = Math.max(6, height / 60);
-      int border = Math.max(2, barHeight / 4);
+      // A slim flat bar in the mod's colours: dark track, hairline edge, accent fill.
+      int barHeight = Math.max(4, height / 110);
+      int border = Math.max(1, barHeight / 4);
       int x = (width - barWidth) / 2;
       // Scissor boxes count from the bottom of the picture: this puts the bar near the top.
       int y = height - height / 12 - barHeight;
@@ -122,11 +123,11 @@ public final class ExportJob {
       }
 
       var encoder = RenderSystem.getDevice().createCommandEncoder();
-      encoder.clearColorAndDepthTextures(color, 0xFF000000, depth, 1.0, x - border, y - border, barWidth + border * 2, barHeight + border * 2);
-      encoder.clearColorAndDepthTextures(color, 0xFF3A3A3A, depth, 1.0, x, y, barWidth, barHeight);
+      encoder.clearColorAndDepthTextures(color, 0xFF2A2C33, depth, 1.0, x - border, y - border, barWidth + border * 2, barHeight + border * 2);
+      encoder.clearColorAndDepthTextures(color, 0xFF0E0F12, depth, 1.0, x, y, barWidth, barHeight);
       int filled = Math.round(barWidth * Math.max(0.0F, Math.min(1.0F, job.progress)));
       if (filled > 0) {
-         encoder.clearColorAndDepthTextures(color, 0xFF55DD55, depth, 1.0, x, y, filled, barHeight);
+         encoder.clearColorAndDepthTextures(color, Ui.ACCENT, depth, 1.0, x, y, filled, barHeight);
       }
 
       com.mojang.blaze3d.opengl.GlStateManager._disableScissorTest();

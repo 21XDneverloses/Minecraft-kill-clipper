@@ -29,7 +29,8 @@ final class ReplayEditorScreen extends Screen {
    private static final List<String> FORMATS = List.of("mp4", "mov", "mkv");
    private static final float[] SPEEDS = {0.25F, 0.5F, 1.0F, 1.5F, 2.0F};
    private static final float[] ZOOMS = {1.0F, 1.5F, 2.0F, 3.0F, 4.0F};
-   private static final int[] MODE_COLORS = {0xFF3E9E4F, 0xFF3A78C2, 0xFFC7821E};
+   private static final int[] MODE_COLORS = {0xFF2F9E5B, 0xFF3B7DD8, 0xFFD98A2B};
+   private static final int HANDLE = 0xFFFFC53D;
    private static final int PANEL = 100;
    private static final int LABELS = 46;
    private static final String[][] KEYS = {
@@ -80,46 +81,46 @@ final class ReplayEditorScreen extends Screen {
       int right = this.barRight();
       // Top row: trim buttons on the left, settings of the picked camera part on the right.
       int x = 94;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 3, 26, 18).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 3, 30, 18).build());
-      this.addDrawableChild(ButtonWidget.builder(Text.literal(this.vertical ? "9:16" : "16:9"), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 3, 26, 18).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 3, 30, 18).build());
+      this.addDrawableChild(FlatButton.of(Text.literal(this.vertical ? "9:16" : "16:9"), b -> {
          this.vertical = !this.vertical;
          b.setMessage(Text.literal(this.vertical ? "9:16" : "16:9"));
       }).dimensions(right - 36, top + 3, 36, 18).build());
-      this.zoomButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
+      this.zoomButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> {
          ReplayEdit.Switch part = this.replay.partHere();
          part.zoom = next(ZOOMS, part.zoom());
          this.replay.changedPart(part);
       }).dimensions(right - 96, top + 3, 58, 18).build());
-      this.speedButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
+      this.speedButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> {
          ReplayEdit.Switch part = this.replay.partHere();
          part.speed = next(SPEEDS, part.speed());
          this.replay.changedPart(part);
       }).dimensions(right - 162, top + 3, 64, 18).build());
-      this.cameraHereButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Set spot"), b -> this.saveCameraSpot())
+      this.cameraHereButton = this.addDrawableChild(FlatButton.of(Text.literal("Set spot"), b -> this.saveCameraSpot())
          .dimensions(right - 230, top + 3, 66, 18).build());
       // Bottom row.
       int y = this.height - 24;
       x = 8;
-      this.playButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.togglePlay()).dimensions(x, y, 40, 20).build());
+      this.playButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.togglePlay()).dimensions(x, y, 40, 20).build());
       x += 42;
-      this.povButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.nextPov()).dimensions(x, y, 84, 20).build());
+      this.povButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.nextPov()).dimensions(x, y, 84, 20).build());
       x += 86;
-      this.splitButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
+      this.splitButton = this.addDrawableChild(FlatButton.of(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
       x += 42;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 42, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 42, 20).build());
       x += 44;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal(this.format.toUpperCase(Locale.ROOT)), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal(this.format.toUpperCase(Locale.ROOT)), b -> {
          this.format = FORMATS.get((FORMATS.indexOf(this.format) + 1) % FORMATS.size());
          b.setMessage(Text.literal(this.format.toUpperCase(Locale.ROOT)));
       }).dimensions(x, y, 36, 20).build());
       x += 38;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).primary().build());
       x += 46;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 34, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 34, 20).build());
       x += 36;
-      this.addDrawableChild(ButtonWidget.builder(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
-      this.linkButton = this.addDrawableChild(ButtonWidget.builder(Text.literal("Get link"), b -> {
+      this.addDrawableChild(FlatButton.of(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
+      this.linkButton = this.addDrawableChild(FlatButton.of(Text.literal("Get link"), b -> {
          java.nio.file.Path file = ReplayPlayer.exportedFile;
          if (file != null) {
             this.client.setScreen(new ShareScreen(this, file));
@@ -270,7 +271,7 @@ final class ReplayEditorScreen extends Screen {
 
    @Override
    public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-      context.fill(0, 0, this.width, this.height, 0xFF101010);
+      context.fill(0, 0, this.width, this.height, Ui.SURFACE);
       GpuTexture source = this.client.getFramebuffer().getColorAttachment();
       if (source == null) {
          return;
@@ -290,10 +291,12 @@ final class ReplayEditorScreen extends Screen {
 
       RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(source, preview.getGlTexture(), 0, 0, 0, 0, 0, w, h);
       int[] area = this.previewArea();
-      context.fill(area[0] - 1, area[1] - 1, area[0] + area[2] + 1, area[1] + area[3] + 1, 0xFF333333);
+      Ui.outline(context, area[0] - 1, area[1] - 1, area[0] + area[2] + 1, area[1] + area[3] + 1, Ui.LINE_STRONG);
       // The game picture is stored bottom row first, so flip it.
       context.drawTexturedQuad(PREVIEW_ID, area[0], area[1], area[0] + area[2], area[1] + area[3], 0.0F, 1.0F, 1.0F, 0.0F);
-      context.fill(0, this.panelTop(), this.width, this.panelTop() + 1, 0xFF444444);
+      // The timeline panel: a slightly lighter surface with a hairline on top.
+      context.fill(0, this.panelTop(), this.width, this.height, 0xFF131418);
+      context.fill(0, this.panelTop(), this.width, this.panelTop() + 1, Ui.LINE_STRONG);
    }
 
    @Override
@@ -318,37 +321,40 @@ final class ReplayEditorScreen extends Screen {
       }
 
       int top = this.panelTop();
-      context.drawTextWithShadow(this.textRenderer, clock(now) + " / " + clock(length), 8, top + 8, 0xFFFFFFFF);
+      String time = clock(now);
+      Ui.text(context, this.textRenderer, time, 8, top + 8, Ui.TEXT);
+      Ui.text(context, this.textRenderer, " / " + clock(length), 8 + this.textRenderer.getWidth(time), top + 8, Ui.MUTED);
       // Time ruler.
       int rulerY = top + 24;
       long step = length > 60000L ? 10000L : length > 20000L ? 5000L : 1000L;
       for (long t = 0L; t <= length; t += step) {
          int x = this.xOf(t);
-         context.fill(x, rulerY + 6, x + 1, rulerY + 10, 0xFF777777);
-         if (t % (step * (length > 20000L ? 2L : 5L)) == 0L) {
-            context.drawTextWithShadow(this.textRenderer, clock(t).replaceAll("\\.0$", ""), x + 2, rulerY - 1, 0xFF888888);
+         boolean major = t % (step * (length > 20000L ? 2L : 5L)) == 0L;
+         context.fill(x, rulerY + (major ? 5 : 7), x + 1, rulerY + 10, major ? Ui.MUTED : Ui.FAINT);
+         if (major) {
+            Ui.text(context, this.textRenderer, clock(t).replaceAll("\\.0$", ""), x + 2, rulerY - 1, Ui.FAINT);
          }
       }
 
       // Clip track: the whole fight, with the trimmed part bright and yellow handles at both ends.
       int clipTop = this.clipTrackTop();
-      context.drawTextWithShadow(this.textRenderer, "Clip", 8, clipTop + 3, 0xFFCCCCCC);
-      context.fill(left, clipTop, right, clipTop + 14, 0xFF1C1C1C);
+      Ui.text(context, this.textRenderer, "Clip", 8, clipTop + 3, Ui.MUTED);
+      context.fill(left, clipTop, right, clipTop + 14, Ui.RAISED);
       int in = this.xOf(trim[0]);
       int out = this.xOf(trim[1]);
-      context.fill(in, clipTop, out, clipTop + 14, 0xFF4A6FA5);
+      context.fill(in, clipTop, out, clipTop + 14, Ui.KEPT);
       String clipName = this.replay.file().getFileName().toString().replace(".kcreplay", "");
       String name = this.textRenderer.trimToWidth(clock(trim[1] - trim[0]) + "  " + clipName, Math.max(0, out - in - 12));
-      context.drawTextWithShadow(this.textRenderer, name, in + 6, clipTop + 3, 0xFFFFFFFF);
-      context.fill(in, clipTop - 1, in + 3, clipTop + 15, 0xFFFFDD33);
-      context.fill(out - 3, clipTop - 1, out, clipTop + 15, 0xFFFFDD33);
+      Ui.text(context, this.textRenderer, name, in + 6, clipTop + 3, Ui.TEXT);
+      context.fill(in, clipTop - 1, in + 3, clipTop + 15, HANDLE);
+      context.fill(out - 3, clipTop - 1, out, clipTop + 15, HANDLE);
       // Camera track: one coloured part per camera switch, the picked one outlined.
       int camTop = this.cameraTrackTop();
-      context.drawTextWithShadow(this.textRenderer, "Camera", 8, camTop + 4, 0xFFCCCCCC);
+      Ui.text(context, this.textRenderer, "Camera", 8, camTop + 4, Ui.MUTED);
       List<ReplayEdit.Switch> parts = this.replay.edit.switches;
       long firstStart = parts.isEmpty() ? length : parts.get(0).timeMs;
       if (firstStart > 0L) {
-         this.drawPart(context, this.xOf(0L), this.xOf(firstStart), camTop, 0xFF3A3A3A, "Recorded POV", false);
+         this.drawPart(context, this.xOf(0L), this.xOf(firstStart), camTop, 0xFF2A2D35, "Recorded POV", false);
       }
 
       ReplayEdit.Switch picked = this.part();
@@ -368,16 +374,18 @@ final class ReplayEditorScreen extends Screen {
          if (part.mode == ReplayPlayer.CameraMode.SPECTATOR) {
             // Keyframe marker.
             int kx = this.xOf(part.timeMs);
-            context.fill(kx - 2, camTop - 4, kx + 3, camTop + 1, 0xFFFFFFFF);
+            context.fill(kx - 2, camTop - 4, kx + 3, camTop + 1, Ui.TEXT);
          }
       }
 
       // Playhead across the ruler and both tracks.
       int played = this.xOf(now);
-      context.fill(played - 1, rulerY + 4, played + 1, camTop + 17, 0xFFFFFFFF);
-      context.fill(played - 3, rulerY + 2, played + 3, rulerY + 5, 0xFFFFFFFF);
+      context.fill(played, rulerY + 4, played + 1, camTop + 17, Ui.TEXT);
+      context.fill(played - 3, rulerY + 1, played + 4, rulerY + 5, Ui.TEXT);
       if (this.replay.exporting()) {
-         context.drawCenteredTextWithShadow(this.textRenderer, "Exporting...", this.width / 2, 8, 0xFFFF5555);
+         int w = this.textRenderer.getWidth("Exporting...") + 16;
+         Ui.panel(context, this.width / 2 - w / 2, 4, this.width / 2 + w / 2, 19, 1.0F);
+         Ui.centered(context, this.textRenderer, "Exporting...", this.width / 2, 8, Ui.TEXT);
       }
 
       if (showKeys) {
@@ -387,9 +395,11 @@ final class ReplayEditorScreen extends Screen {
       String status = this.statusText();
       if (!status.isEmpty()) {
          int[] box = this.statusBox(status);
-         context.fill(box[0], box[1], box[2], box[3], 0xD0000000);
-         int color = status.startsWith("Export failed") ? 0xFFFF6666 : status.startsWith("Saved") ? 0xFF66FF66 : 0xFFFFDD55;
-         context.drawCenteredTextWithShadow(this.textRenderer, status, (box[0] + box[2]) / 2, box[1] + 3, color);
+         int color = status.startsWith("Export failed") ? Ui.ERROR : status.startsWith("Saved") ? Ui.SUCCESS : Ui.WARN;
+         context.fill(box[0], box[1], box[2], box[3], Ui.PANEL);
+         Ui.outline(context, box[0], box[1], box[2], box[3], Ui.LINE);
+         context.fill(box[0], box[1], box[0] + 2, box[3], color);
+         Ui.centered(context, this.textRenderer, status, (box[0] + box[2]) / 2 + 1, box[1] + 3, color);
       }
 
       boolean saved = ReplayPlayer.exportStatus.startsWith("Saved") && ReplayPlayer.exportedFile != null;
@@ -406,13 +416,15 @@ final class ReplayEditorScreen extends Screen {
          return;
       }
 
+      context.fill(x0 + 1, y, x1 - 1, y + 16, color);
+      // A darker band along the bottom gives the part some depth.
+      context.fill(x0 + 1, y + 14, x1 - 1, y + 16, 0x40000000);
       if (picked) {
-         context.fill(x0, y - 1, x1, y + 17, 0xFFFFFFFF);
+         Ui.outline(context, x0, y - 1, x1, y + 17, Ui.TEXT);
       }
 
-      context.fill(x0 + 1, y, x1 - 1, y + 16, color);
       String text = this.textRenderer.trimToWidth(label, Math.max(0, x1 - x0 - 6));
-      context.drawTextWithShadow(this.textRenderer, text, x0 + 4, y + 4, 0xFFFFFFFF);
+      Ui.text(context, this.textRenderer, text, x0 + 4, y + 4, Ui.TEXT);
    }
 
    private void drawKeys(DrawContext context) {
@@ -433,12 +445,12 @@ final class ReplayEditorScreen extends Screen {
       context.getMatrices().translate(x, y);
       context.getMatrices().scale(scale, scale);
       context.getMatrices().translate(-x, -y);
-      context.fill(x, y, x + w, y + h, 0xC0000000);
-      context.drawTextWithShadow(this.textRenderer, "Editor keys", x + 6, y + 5, 0xFFFFDD55);
+      Ui.panel(context, x, y, x + w, y + h, 1.0F);
+      Ui.text(context, this.textRenderer, "Editor keys", x + 6, y + 5, Ui.TEXT);
       for (int i = 0; i < KEYS.length; i++) {
          int ly = y + 18 + i * 11;
-         context.drawTextWithShadow(this.textRenderer, KEYS[i][0], x + 6, ly, 0xFFFFFFFF);
-         context.drawTextWithShadow(this.textRenderer, KEYS[i][1], x + 14 + keyWidth, ly, 0xFFBBBBBB);
+         Ui.text(context, this.textRenderer, KEYS[i][0], x + 6, ly, Ui.TEXT);
+         Ui.text(context, this.textRenderer, KEYS[i][1], x + 14 + keyWidth, ly, Ui.MUTED);
       }
 
       context.getMatrices().popMatrix();
