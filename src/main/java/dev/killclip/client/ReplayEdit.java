@@ -66,6 +66,8 @@ final class ReplayEdit {
       long trimEndMs;
    }
 
+   /** Edits made by the highlight reel for its instant replays: used instead of the saved edit, never written. */
+   private static final java.util.Map<Path, ReplayEdit> OVERRIDES = new java.util.concurrent.ConcurrentHashMap<>();
    private final transient Path file;
    final List<Switch> switches = new ArrayList<>();
    /** Where the export starts, in ms into the clip. */
@@ -110,7 +112,25 @@ final class ReplayEdit {
       }
    }
 
+   /** An edit kept in memory only (nothing is saved), for the highlight reel's instant replays. */
+   static ReplayEdit temporary() {
+      return new ReplayEdit(null);
+   }
+
+   static void override(Path replay, ReplayEdit edit) {
+      OVERRIDES.put(replay.toAbsolutePath().normalize(), edit);
+   }
+
+   static void clearOverride(Path replay) {
+      OVERRIDES.remove(replay.toAbsolutePath().normalize());
+   }
+
    static ReplayEdit load(Path replay) {
+      ReplayEdit temporary = OVERRIDES.get(replay.toAbsolutePath().normalize());
+      if (temporary != null) {
+         return temporary;
+      }
+
       ReplayEdit edit = new ReplayEdit(editFile(replay));
       if (Files.isRegularFile(edit.file)) {
          try {
@@ -133,6 +153,10 @@ final class ReplayEdit {
    }
 
    void save() {
+      if (this.file == null) {
+         return;
+      }
+
       Saved saved = new Saved();
       saved.switches = this.switches;
       saved.trimStartMs = this.trimStartMs;
