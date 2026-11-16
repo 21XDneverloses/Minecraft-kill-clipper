@@ -13,6 +13,7 @@ final class DevReelCheck {
    private static final boolean ON = Boolean.getBoolean("killclip.devReel");
    private static int step;
    private static long stepAt;
+   private static boolean filmShot;
 
    private DevReelCheck() {
    }
@@ -51,6 +52,11 @@ final class DevReelCheck {
          }
          case 3 -> shot(client, "reel-making.png");
          case 4 -> {
+            if (ReelAngles.running() && ExportJob.running() && !filmShot) {
+               filmShot = true;
+               shot(client, "reel-filming.png");
+            }
+
             if (HighlightReelScreen.busy()) {
                return;
             }

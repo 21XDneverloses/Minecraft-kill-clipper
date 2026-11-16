@@ -60,6 +60,16 @@ public final class KillClipperClient implements ClientModInitializer {
    private List<Pattern> decoratedPatterns = List.of();
    private final KillDeduplicator duplicates = new KillDeduplicator();
    private final HitTracker hits = new HitTracker();
+   /** How you last hit each player and from how far, for the highlight reel's kill details. */
+   private final Map<String, LastHit> lastHits = new HashMap<>();
+   /** Kills waiting for their clip, with their details. */
+   private final List<Moment> moments = new ArrayList<>();
+
+   private record LastHit(dev.killclip.core.ClipMeta.Cause cause, float distance) {
+   }
+
+   private record Moment(long timeMs, dev.killclip.core.ClipMeta.Cause cause, float health, float distance) {
+   }
    private StreakTracker streaks = new StreakTracker(10000L);
    private ClipRecorder recorder;
    private ClipConfig config;
@@ -147,6 +157,7 @@ public final class KillClipperClient implements ClientModInitializer {
       AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
          if (world.isClient() && entity instanceof PlayerEntity victim && victim != player) {
             this.hits.onHit(victim.getGameProfile().name(), nowMs());
+            this.noteHit(victim.getGameProfile().name(), dev.killclip.core.ClipMeta.Cause.MELEE, player.distanceTo(victim));
          } else if (world.isClient() && entity instanceof EndCrystalEntity) {
             // Crystal PvP: everyone near the crystal you pop is in the blast.
             this.markPlayersNear(world, entity.getEntityPos(), player);
@@ -180,6 +191,7 @@ public final class KillClipperClient implements ClientModInitializer {
          this.runDevReplay(client);
          DevEditorCheck.tick(client);
          DevReelCheck.tick(client);
+         ReelAngles.tick(client);
          boolean dead = client.player != null && client.player.isDead();
          if (dead && !this.wasDead && !ReplayPlayer.playing() && client.world != null) {
             this.stats.death(this.host());
@@ -200,6 +212,7 @@ public final class KillClipperClient implements ClientModInitializer {
             this.duplicates.clear();
             this.streaks.clear();
             this.hits.clear();
+            this.lastHits.clear();
             this.worldIdentity = identity;
          }
 
@@ -314,7 +327,7 @@ public final class KillClipperClient implements ClientModInitializer {
                kill = KillRules.guess(message.getString(), local, online);
             }
 
-            kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat"));
+            kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat", plain));
             if (kill.isEmpty() && this.isOwnDeathLine(message, local, online)) {
                this.onOwnDeath("chat");
             }
@@ -324,13 +337,47 @@ public final class KillClipperClient implements ClientModInitializer {
 
    /** Every kill source (chat message or a death of someone you hit) ends up here; duplicates are dropped. */
    private void onKillConfirmed(String victim, String source) {
+      this.onKillConfirmed(victim, source, "");
+   }
+
+   private void onKillConfirmed(String victim, String source, String message) {
       long receipt = nowMs();
       this.hits.forget(victim);
+      LastHit hit = this.lastHits.remove(victim);
       if (this.duplicates.accept(victim, receipt, this.config.duplicateWindowMs)) {
          this.stats.kill(this.host());
+         this.noteMoment(receipt, victim, hit, message);
          LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
          this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
       }
+   }
+
+   /** Remembers how a kill was made (cause, your health, the distance) for the highlight reel. */
+   private void noteMoment(long timeMs, String victim, LastHit hit, String message) {
+      MinecraftClient client = MinecraftClient.getInstance();
+      dev.killclip.core.ClipMeta.Cause cause = message.isEmpty() ? dev.killclip.core.ClipMeta.Cause.OTHER : dev.killclip.core.ClipMeta.causeFromText(message);
+      if (cause == dev.killclip.core.ClipMeta.Cause.OTHER && hit != null) {
+         cause = hit.cause();
+      }
+
+      float distance = hit != null ? hit.distance() : 0.0F;
+      float health = 0.0F;
+      if (client.player != null && !client.player.isDead()) {
+         health = client.player.getHealth() + client.player.getAbsorptionAmount();
+         if (client.world != null && distance <= 0.0F) {
+            for (PlayerEntity player : client.world.getPlayers()) {
+               if (player != client.player && player.getGameProfile().name().equals(victim)) {
+                  distance = client.player.distanceTo(player);
+               }
+            }
+         }
+      }
+
+      if (this.moments.size() > 100) {
+         this.moments.removeFirst();
+      }
+
+      this.moments.add(new Moment(timeMs, cause, health, distance));
    }
 
    /**
@@ -358,8 +405,17 @@ public final class KillClipperClient implements ClientModInitializer {
       for (PlayerEntity other : world.getPlayers()) {
          if (other != self && other.squaredDistanceTo(center) <= EXPLOSION_RANGE * EXPLOSION_RANGE) {
             this.hits.onHit(other.getGameProfile().name(), nowMs());
+            this.noteHit(other.getGameProfile().name(), dev.killclip.core.ClipMeta.Cause.EXPLOSION, self.distanceTo(other));
          }
       }
+   }
+
+   private void noteHit(String victim, dev.killclip.core.ClipMeta.Cause cause, float distance) {
+      if (this.lastHits.size() > 200) {
+         this.lastHits.clear();
+      }
+
+      this.lastHits.put(victim, new LastHit(cause, distance));
    }
 
    /** Counts a player as hit when one of your arrows, tridents or other projectiles reaches them. */
@@ -374,6 +430,7 @@ public final class KillClipperClient implements ClientModInitializer {
             for (PlayerEntity other : client.world.getPlayers()) {
                if (other != client.player && other.getBoundingBox().expand(1.0).intersects(projectile.getBoundingBox())) {
                   this.hits.onHit(other.getGameProfile().name(), nowMs());
+                  this.noteHit(other.getGameProfile().name(), dev.killclip.core.ClipMeta.Cause.RANGED, client.player.distanceTo(other));
                }
             }
          }
@@ -513,10 +570,22 @@ public final class KillClipperClient implements ClientModInitializer {
       // Start after your last death (and respawn), so the round you lost isn't in the clip; keep 2 s before the kill.
       long afterDeath = Math.max(this.ownDeathMs, this.lastSelfDeathMs) + 500L;
       from = Math.max(from, Math.min(afterDeath, streak.firstKillMs() - 2000L));
-      this.saveClip(from, to, streak.lastKillMs(), label, title, false);
+      List<Moment> kills = new ArrayList<>();
+      for (Moment moment : this.moments) {
+         if (moment.timeMs() >= streak.firstKillMs() - 50L && moment.timeMs() <= streak.lastKillMs() + 50L) {
+            kills.add(moment);
+         }
+      }
+
+      this.moments.removeIf(moment -> moment.timeMs() <= streak.lastKillMs() + 50L);
+      this.saveClip(from, to, streak.lastKillMs(), label, title, false, kills);
    }
 
    private void saveClip(long fromMs, long toMs, long killMs, String label, String title, boolean manual) {
+      this.saveClip(fromMs, toMs, killMs, label, title, manual, List.of());
+   }
+
+   private void saveClip(long fromMs, long toMs, long killMs, String label, String title, boolean manual, List<Moment> kills) {
       if (manual || this.config.feedback) {
          notify("● Saving " + title.toLowerCase() + " clip...", Formatting.AQUA);
       }
@@ -531,6 +600,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          LOGGER.info("Saved clip {}", file);
+         this.saveMeta(file, fromMs, videoLead, kills);
          this.saveReplay(replay, fromMs, toMs, videoLead, file);
       }, error -> {
          if (replay != null) {
@@ -676,6 +746,24 @@ public final class KillClipperClient implements ClientModInitializer {
                }
             });
          });
+      }
+   }
+
+   /** Saves when each kill lands in the clip's video and how it was made, for the highlight reel. */
+   private void saveMeta(String videoFile, long fromMs, long videoLead, List<Moment> kills) {
+      if (kills.isEmpty()) {
+         return;
+      }
+
+      List<dev.killclip.core.ClipMeta.Kill> details = new ArrayList<>();
+      for (Moment moment : kills) {
+         details.add(new dev.killclip.core.ClipMeta.Kill((moment.timeMs() - fromMs + videoLead) / 1000.0, moment.cause(), moment.health(), moment.distance()));
+      }
+
+      try {
+         dev.killclip.core.ClipMeta.write(this.config.clipsDir().resolve(videoFile), details);
+      } catch (Exception e) {
+         LOGGER.warn("Could not save the kill details of {}: {}", videoFile, e.getMessage());
       }
    }
 
@@ -870,6 +958,7 @@ public final class KillClipperClient implements ClientModInitializer {
       this.duplicates.clear();
       this.streaks.clear();
       this.hits.clear();
+      this.lastHits.clear();
       this.recentPlayers.clear();
       this.nextPlayerRefresh = 0L;
       this.worldIdentity = "";

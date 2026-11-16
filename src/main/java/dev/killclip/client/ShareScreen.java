@@ -28,7 +28,7 @@ import net.minecraft.text.Text;
 final class ShareScreen extends FlatScreen {
    private static final String HOST = "https://catbox.moe/user/api.php";
    /** catbox.moe takes files up to 200 MB. */
-   private static final long UPLOAD_LIMIT = 190L * 1000L * 1000L;
+   static final long UPLOAD_LIMIT = 190L * 1000L * 1000L;
    private final Screen parent;
    private final Path clip;
    private boolean vertical;
@@ -135,7 +135,7 @@ final class ShareScreen extends FlatScreen {
    }
 
    /** Uploads the file as multipart/form-data and returns the link the host answers with. */
-   private static String post(Path file, String fileName) throws IOException, InterruptedException {
+   static String post(Path file, String fileName) throws IOException, InterruptedException {
       String boundary = "----killclip" + UUID.randomUUID();
       String head = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"reqtype\"\r\n\r\nfileupload\r\n"
          + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"fileToUpload\"; filename=\"" + fileName.replace("\"", "")

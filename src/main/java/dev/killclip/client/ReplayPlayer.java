@@ -153,6 +153,9 @@ public final class ReplayPlayer {
    private ReplayEdit.Switch lastSwitch;
    /** Opens the editor bar as soon as the replay has loaded (set when opened from the clip list). */
    boolean openEditorOnLoad;
+   /** Set when the highlight reel films an instant replay: the export starts by itself and goes back to the reel. */
+   ReelAngles.Shot autoShot;
+   private boolean autoStarted;
    /** You moved or turned the spectator camera yourself, so it stays where you put it until the next camera part. */
    private boolean manualCamera;
    /**
@@ -454,7 +457,9 @@ public final class ReplayPlayer {
          restarted.exportFormat = keepExport;
          restarted.exportVertical = keepVertical;
          restarted.chatBeforeExport = keepChat;
-         restarted.openEditorOnLoad = keepEditor && keepExport == null;
+         restarted.openEditorOnLoad = keepEditor && keepExport == null && this.autoShot == null;
+         restarted.autoShot = this.autoShot;
+         restarted.autoStarted = this.autoStarted;
       } catch (RuntimeException e) {
          KillClipperClient.LOGGER.warn("Could not restart the replay", e);
          if (keepChat != null) {
@@ -650,7 +655,7 @@ public final class ReplayPlayer {
       ClipConfig config = KillClipperClient.instance().settings();
       String name = this.file.getFileName().toString().replace(".kcreplay", "").replaceAll("^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_", "");
       String stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
-      Path output = config.editedDir().resolve(stamp + "_edit_" + name + "." + this.exportFormat);
+      Path output = this.autoShot != null ? this.autoShot.output() : config.editedDir().resolve(stamp + "_edit_" + name + "." + this.exportFormat);
       ExportJob.active = new ExportJob(output, config.fps, KillClipperClient.instance().encoderInUse(), config.quality, config.resolution);
    }
 
@@ -666,21 +671,33 @@ public final class ReplayPlayer {
       }
 
       if (job == null) {
+         if (this.autoShot != null) {
+            ReelAngles.shotFinished(this.autoShot, null, "the replay could not be filmed");
+         }
+
          return;
       }
 
+      ReelAngles.Shot shot = this.autoShot;
       if (!saved || format == null || job.video == null) {
          if (job.video != null) {
             job.video.cancel();
          }
 
          deleteQuietly(job.output);
+         if (shot != null) {
+            ReelAngles.shotFinished(shot, null, job.failure);
+         }
+
          return;
       }
 
-      // Back to the editor, which shows the progress until the file is saved.
-      this.client.setScreen(new ReplayEditorScreen(this));
-      exportStatus = "Finishing the export...";
+      if (shot == null) {
+         // Back to the editor, which shows the progress until the file is saved.
+         this.client.setScreen(new ReplayEditorScreen(this));
+         exportStatus = "Finishing the export...";
+      }
+
       List<dev.killclip.core.VideoTools.AudioPart> parts = this.audioParts();
       Path source = ClipLibraryScreen.findVideoFor(this.file);
       java.util.concurrent.CompletableFuture.runAsync(() -> {
@@ -720,6 +737,11 @@ public final class ReplayPlayer {
          String result = message;
          Path file = saved_;
          this.client.execute(() -> {
+            if (shot != null) {
+               ReelAngles.shotFinished(shot, file, file == null ? result : null);
+               return;
+            }
+
             exportStatus = result;
             if (file != null) {
                exportedFile = file;
@@ -889,7 +911,19 @@ public final class ReplayPlayer {
          this.client.setScreen(new ReplayEditorScreen(this));
       }
 
+      if (this.autoShot != null && !this.autoStarted && !this.exporting() && this.client.world != null && this.timeMs >= this.clipStartMs
+         && this.seekTargetMs < 0L) {
+         this.autoStarted = true;
+         this.export("mp4", false);
+      }
+
       // Esc during an export stops it: the pause menu would end up in the video.
+      if (this.exporting() && this.autoShot != null && this.client.currentScreen instanceof net.minecraft.client.gui.screen.GameMenuScreen) {
+         ReelAngles.cancel("Replays skipped: Esc was pressed.");
+         this.finishExport(false);
+         return;
+      }
+
       if (this.exporting() && this.client.currentScreen instanceof net.minecraft.client.gui.screen.GameMenuScreen) {
          this.finishExport(false);
          this.setPaused(true);
@@ -911,6 +945,10 @@ public final class ReplayPlayer {
          String failure = job.failure;
          this.finishExport(false);
          this.setPaused(true);
+         if (this.autoShot != null) {
+            return;
+         }
+
          exportStatus = "Export failed: " + failure + ". Try another Encoder in the settings if this keeps happening.";
          this.client.setScreen(new ReplayEditorScreen(this));
          return;
