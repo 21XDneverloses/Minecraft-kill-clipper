@@ -56,6 +56,8 @@ public final class ClipConfig {
    public boolean openAfterExport = true;
    /** Your own music for highlight reels (mp3, wav, ...); empty until you choose one. */
    public String reelMusicFile = "";
+   /** Kill popups and the intro and closing titles on highlight reels. Off by default: a clean reel. */
+   public boolean reelText = false;
    public String ffmpegPath = "";
    public boolean restrictToListedServers = false;
    public List<String> servers = ServerDefaults.hosts();
