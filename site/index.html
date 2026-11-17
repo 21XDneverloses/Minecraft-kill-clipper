@@ -104,8 +104,8 @@ nav.top .inner { display: flex; align-items: center; gap: 14px; height: 64px; }
 /* Home hero */
 .hero { padding-block: 56px 28px; }
 .hero-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 40px; align-items: end; }
-@media (max-width: 900px) { .hero-top { grid-template-columns: 1fr; gap: 28px; } }
-.hero-copy { display: grid; gap: 22px; justify-items: start; }
+@media (max-width: 900px) { .hero-top { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+.hero-copy { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; justify-items: start; }
 .lede { font-size: 1.18rem; color: var(--muted); max-width: 54ch; }
 .newbar { display: inline-flex; align-items: center; gap: 10px; font-size: .88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px 5px 5px; text-decoration: none; max-width: 100%; }
 .newbar b { font: 400 .66rem/1 var(--pixel); letter-spacing: .06em; background: var(--accent); color: var(--accent-ink); padding: 6px 8px; border-radius: 999px; flex: none; }
@@ -351,11 +351,59 @@ footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
 footer a { color: var(--muted); text-decoration: none; }
 footer a:hover { color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { .v-feed span { animation: none; } .v-banner, .v-fx { transition: none; } }
+
+/* Real footage player (home hero) */
+.footage { margin-top: 44px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); box-shadow: 0 30px 80px -40px rgba(255, 88, 200, .35); }
+.ed-bar .tag.real { background: rgba(98, 217, 143, .14); color: var(--ok); border-color: rgba(98, 217, 143, .35); }
+.rf-stage { position: relative; background: #000; aspect-ratio: 16 / 9; display: grid; place-items: center; }
+.rf-stage video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.rf-stage.tall { background: radial-gradient(60% 80% at 50% 50%, rgba(255, 88, 200, .18), #07060b 70%); }
+.rf-stage.tall video { width: auto; height: 100%; aspect-ratio: 9 / 16; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.rf-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.rf-tabs button { appearance: none; background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--muted); text-align: left; padding: 14px 18px; cursor: pointer; display: grid; gap: 2px; font: inherit; position: relative; }
+.rf-tabs button:last-child { border-right: 0; }
+.rf-tabs button b { font: 600 .98rem/1.2 var(--display); color: var(--fg); }
+.rf-tabs button span { font-size: .84rem; }
+.rf-tabs button:hover { background: var(--surface2); }
+.rf-tabs button[aria-selected="true"] { background: var(--surface2); }
+.rf-tabs button[aria-selected="true"]::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--accent); }
+@media (max-width: 640px) { .rf-tabs { grid-template-columns: 1fr; } .rf-tabs button { border-right: 0; border-bottom: 1px solid var(--line); } .rf-tabs button:last-child { border-bottom: 0; } .rf-tabs button[aria-selected="true"]::before { right: auto; bottom: 0; width: 2px; height: auto; top: 0; } }
+
+/* Screenshots */
+.shot { margin: 0; display: grid; gap: 10px; align-content: start; }
+.shot img { display: block; width: auto; max-width: 100%; max-height: 520px; height: auto; justify-self: start; border-radius: 12px; border: 1px solid var(--line); background: #000; box-shadow: 0 24px 60px -36px rgba(0, 0, 0, .9); }
+.shot figcaption { color: var(--dim); font-size: .88rem; line-height: 1.5; }
+.shot figcaption b { color: var(--muted); }
+.shot.wide { margin-top: 8px; }
+
+/* Get started */
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 48px; }
+.toc a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); text-decoration: none; font-size: .9rem; }
+.toc a:hover { color: var(--fg); border-color: var(--accent); }
+.toc b { font: 400 .7rem/22px var(--pixel); width: 22px; height: 22px; text-align: center; border-radius: 50%; background: var(--surface2); color: var(--accent); }
+.tut { list-style: none; margin: 0; padding: 0; display: grid; gap: 72px; }
+.tut > li { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 44px; align-items: start; scroll-margin-top: 90px; }
+.tut > li:nth-child(even) .tut-text { order: 2; }
+.tut-text { display: grid; gap: 14px; align-content: start; }
+.tut-text h2 { font-size: clamp(1.4rem, 2.6vw, 1.9rem); }
+.tut-text > p { color: var(--muted); }
+.tut-text .cta { margin-top: 4px; }
+.step-n { font: 400 .72rem/1 var(--pixel); color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+.more-link a { font-weight: 600; }
+.inline-vid { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: #000; aspect-ratio: 16 / 9; }
+.cmds { display: grid; gap: 10px; }
+.cmds div { display: grid; gap: 4px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.cmds code { font-size: .95rem; color: var(--fg); }
+.cmds span { color: var(--muted); font-size: .92rem; }
+@media (max-width: 900px) { .tut > li { grid-template-columns: 1fr; gap: 22px; } .tut > li:nth-child(even) .tut-text { order: 0; } .tut { gap: 56px; } }
+.tut-side { display: grid; gap: 12px; align-content: start; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.shot.wide img { width: 100%; max-height: none; }
 </style></head><body>
 <nav class="top gutter" aria-label="Main">
   <div class="inner">
     <a class="brand" href="#home"><span class="brand-mark" aria-hidden="true"></span>Kill Clipper</a>
     <div class="navlinks" id="navlinks">
+      <a href="#start" data-route="start">Get started</a>
       <a href="#features" data-route="features">Features</a>
       <a href="#editor" data-route="editor">Clip Editor</a>
       <a href="#install" data-route="install">Install</a>
@@ -374,21 +422,21 @@ footer a:hover { color: var(--fg); }
   <div class="hero gutter"><div class="inner">
     <div class="hero-top">
       <div class="hero-copy">
-        <a class="newbar" href="#changelog"><b>NEW</b><span>v1.11.5: Replays look like what you saw</span></a>
+        <a class="newbar" href="#changelog"><b>NEW</b><span>v1.15.0: Smoother recording and a first-run setup</span></a>
         <h1>Every kill, <em>clipped.</em></h1>
         <p class="lede">Kill Clipper records your Minecraft PvP in the background and saves a video the moment you get a kill. Then rewatch the fight from any camera, add slow-mo, and share it. All inside the game, with nothing else to install.</p>
         <div class="cta">
           <a class="btn primary lg" data-dl href="#">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
-            Download v1.11.5
+            Download v1.15.0
           </a>
-          <a class="btn ghost lg" href="#install">Install guide</a>
+          <a class="btn ghost lg" href="#start">How it works</a>
         </div>
       </div>
       <aside class="relcard" aria-label="Latest release">
-        <span class="eyebrow" data-reldate>Latest release · 11 Nov 2026</span>
+        <span class="eyebrow" data-reldate>Latest release · 17 Nov 2026</span>
         <dl>
-          <dt>File</dt><dd>killclipper-1.11.5.jar</dd>
+          <dt>File</dt><dd>killclipper-1.15.0.jar</dd>
           <dt>Game</dt><dd>Minecraft 1.21.11</dd>
           <dt>Loader</dt><dd>Fabric 0.19.3+</dd>
           <dt>Java</dt><dd>21 or newer</dd>
@@ -397,37 +445,18 @@ footer a:hover { color: var(--fg); }
       </aside>
     </div>
 
-    <div class="editor" aria-label="Playable demo of the Clip Editor">
-      <div class="ed-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="file">Clip Editor · double-kill.kcreplay</span><span class="tag">LIVE DEMO</span></div>
-      <div class="viewport" id="viewport">
-        <canvas id="scene" aria-hidden="true"></canvas>
-        <div class="hud v-poster" id="v-poster" hidden>Replay demo needs WebGL. The real editor runs inside Minecraft.</div>
-        <div class="hud v-flash" id="v-flash"></div>
-        <div class="hud v-pov" id="v-pov"><i></i><span>1ST PERSON</span></div>
-        <div class="hud v-feed" id="v-feed"></div>
-        <div class="hud v-cross" id="v-cross" aria-hidden="true"></div>
-        <div class="hud v-banner" id="v-banner">DOUBLE KILL</div>
-        <div class="hud v-fx" id="v-fx">0.3x SLOW-MO · ZOOM 1.6x</div>
+    <div class="footage" aria-label="Real footage from Kill Clipper">
+      <div class="ed-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="file" id="rf-file">double-kill.mp4 · edited in the Clip Editor</span><span class="tag real">REAL FOOTAGE</span></div>
+      <div class="rf-stage">
+        <video id="rf-video" src="media/double-kill.mp4" poster="media/double-kill.jpg" autoplay muted loop playsinline preload="auto" aria-label="A double kill recorded and edited with Kill Clipper"></video>
       </div>
-      <div class="ed-controls">
-        <button class="ed-play" id="ed-play" type="button" aria-label="Pause"></button>
-        <span class="ed-time" id="ed-time">0:00.0 / 0:10.0</span>
-        <div class="seg" role="group" aria-label="Camera">
-          <button type="button" data-pov="auto" aria-pressed="true">Auto</button>
-          <button type="button" data-pov="1" aria-pressed="false"><i style="background:var(--pov1)"></i>1st person</button>
-          <button type="button" data-pov="3" aria-pressed="false"><i style="background:var(--pov3)"></i>3rd person</button>
-          <button type="button" data-pov="S" aria-pressed="false"><i style="background:var(--povs)"></i>Spectator</button>
-        </div>
-        <span class="ed-hint">Pick a camera, or click the timeline to scrub.</span>
-      </div>
-      <div class="tracks" id="tracks">
-        <div class="trow"><span>CLIP</span><div class="tlane"><div class="clipbar"></div><i class="kmark" style="left:36%"></i><i class="kmark" style="left:65%"></i></div></div>
-        <div class="trow"><span>CAMERA</span><div class="tlane" id="camlane"></div></div>
-        <div class="trow"><span>SPEED</span><div class="tlane thin"><div class="sseg" style="left:62%;width:8%"></div></div></div>
-        <div class="playhead" id="playhead"></div>
+      <div class="rf-tabs" role="tablist" aria-label="Choose a video">
+        <button type="button" role="tab" aria-selected="true" data-src="media/double-kill.mp4" data-poster="media/double-kill.jpg" data-file="double-kill.mp4 · edited in the Clip Editor"><b>Double kill</b><span>1st person, 3rd person, slow-mo, spectator</span></button>
+        <button type="button" role="tab" aria-selected="false" data-src="media/triple-kill.mp4" data-poster="media/triple-kill.jpg" data-file="triple-kill.mp4 · the whole fight, edited"><b>Triple kill</b><span>A full 1v3 with spectator keyframes</span></button>
+        <button type="button" role="tab" aria-selected="false" data-src="media/vertical.mp4" data-poster="media/vertical.jpg" data-file="vertical.mp4 · 9:16 export for TikTok and Shorts" data-tall><b>9:16 for Shorts</b><span>The double kill, exported vertical</span></button>
       </div>
     </div>
-    <p class="demo-cap">A small copy of the in-game Clip Editor. The fight is a made-up example; the cameras, slow-mo and timeline work like the real thing.</p>
+    <p class="demo-cap">Recorded in Minecraft by Kill Clipper and edited in its Clip Editor, with no other software. The opponents are practice bots on a test server, and these videos have no sound.</p>
   </div></div>
 
   <div class="band gutter"><div class="inner">
@@ -444,8 +473,8 @@ footer a:hover { color: var(--fg); }
     <ol class="flow">
       <li><h3>It's always recording</h3><p>A rolling buffer keeps the last minute or two of gameplay on disk, not in memory, so it doesn't slow the game down.</p></li>
       <li><h3>It spots your kill</h3><p>Kill messages, hits, crystals, anchors and beds are all checked. It works on any server with no setup.</p></li>
-      <li><h3>It saves the clip</h3><p>The seconds before and after are saved as a video. Kills in a row become one streak clip. Your deaths stay out.</p></li>
-      <li><h3>You edit and share</h3><p>Open the Clip Editor from the main menu, change cameras, add slow-mo, and get a link to paste in Discord.</p></li>
+      <li><h3>It saves the clip</h3><p>The seconds before and after are saved as a video. Kills in a row become one streak clip. Your deaths stay out. <kbd>F8</kbd> saves a clip any time.</p></li>
+      <li><h3>You edit and share</h3><p>Open the Clip Editor from the main menu, change cameras, add slow-mo, make a highlight reel, and get a link to paste in Discord.</p></li>
     </ol>
   </div></div>
 
@@ -476,6 +505,16 @@ footer a:hover { color: var(--fg); }
         <p>Every clip keeps the fight itself, so you can watch it again in first person, third person or a free camera, then export a new video with sound.</p>
         <a class="more" href="#editor">See the Clip Editor →</a>
       </div>
+      <div class="tile w3">
+        <h3>Highlight reels in one click</h3>
+        <p>Picks your best kills, cuts them to the beat and adds slow-mo replays of the best ones. Built-in music that's free to post, or your own.</p>
+        <a class="more" href="#start/reel">How to make one →</a>
+      </div>
+      <div class="tile w3">
+        <h3>A clip library that stays tidy</h3>
+        <p>Thumbnails, search, favourites, tags and renaming. Set a size or age limit and old clips clean themselves up.</p>
+        <a class="more" href="#start/library">See the library →</a>
+      </div>
       <div class="tile">
         <h3>Share with a link</h3>
         <p>Get link uploads the clip and copies a link that plays right in Discord. There's a vertical 9:16 copy for Shorts and TikTok too.</p>
@@ -493,20 +532,170 @@ footer a:hover { color: var(--fg); }
         <span class="label-ex">EXAMPLE NUMBERS</span>
       </div>
     </div>
-    <div class="cta" style="margin-top:28px"><a class="btn ghost" href="#features">All features</a></div>
+    <div class="cta" style="margin-top:28px"><a class="btn ghost" href="#features">All features</a><a class="btn ghost" href="#start">Step-by-step guide</a></div>
   </div></div>
 
   <div class="band gutter"><div class="inner">
     <div class="endcta">
       <div><h2>Get your next kill on video</h2><p>One jar in your mods folder. Recording starts by itself the next time you join a server.</p></div>
-      <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.11.5</a><a class="btn ghost lg" href="#install">Install guide</a></div>
+      <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.15.0</a><a class="btn ghost lg" href="#install">Install guide</a></div>
     </div>
   </div></div>
 </div>
 
+<!-- GET STARTED -->
+<div class="page page-pad gutter" data-page="start" hidden><div class="inner">
+  <div class="head"><span class="eyebrow">Get started</span><h1 class="page-title">From install to your first highlight reel</h1><p class="sub">Eight short steps. Every screenshot below is the real mod, taken in game.</p></div>
+
+  <nav class="toc" aria-label="Steps">
+    <a href="#start/install"><b>1</b>Install</a>
+    <a href="#start/setup"><b>2</b>First launch</a>
+    <a href="#start/play"><b>3</b>Play</a>
+    <a href="#start/library"><b>4</b>Your clips</a>
+    <a href="#start/edit"><b>5</b>Edit a fight</a>
+    <a href="#start/reel"><b>6</b>Highlight reel</a>
+    <a href="#start/share"><b>7</b>Share</a>
+    <a href="#start/fix"><b>8</b>Missed kill?</a>
+  </nav>
+
+  <ol class="tut">
+    <li id="start/install">
+      <div class="tut-text">
+        <span class="step-n">Step 1</span>
+        <h2>Install the mod</h2>
+        <p>Kill Clipper is one jar. It needs Minecraft 1.21.11 with Fabric and Fabric API. FFmpeg and the recorder are inside the jar, so there is nothing else to install.</p>
+        <ul class="checks">
+          <li><span>Make a <b>Fabric 1.21.11</b> instance (or install Fabric Loader for the official launcher).</span></li>
+          <li><span>Put <a href="https://modrinth.com/mod/fabric-api" target="_blank" rel="noopener">Fabric API</a> and <a href="#get">killclipper-1.15.0.jar</a> in the <code>mods</code> folder.</span></li>
+          <li><span>Remove any older <code>killclipper</code> jar, and never use the one ending in <code>-sources</code>.</span></li>
+        </ul>
+        <div class="cta"><a class="btn primary" data-dl href="#">Download v1.15.0</a><a class="btn ghost" href="#install">Steps for your launcher</a></div>
+      </div>
+      <figure class="shot"><img src="media/title.jpg" width="1280" height="720" loading="lazy" alt="Minecraft title screen with the Clip Editor button added by Kill Clipper"><figcaption>When it's installed, the title screen gets a <b>Clip Editor</b> button.</figcaption></figure>
+    </li>
+
+    <li id="start/setup">
+      <div class="tut-text">
+        <span class="step-n">Step 2</span>
+        <h2>Let the first-run setup pick your settings</h2>
+        <p>On the first launch a welcome screen tests each video encoder on your PC with a real short recording, then picks the encoder, fps and resolution for you. Press <b>Use these settings</b> and you're done.</p>
+        <ul class="checks">
+          <li><span>If your graphics card has a video encoder (NVIDIA or Intel), that's used, so recording costs very little fps.</span></li>
+          <li><span>It also shows where clips are saved and the <b>Save a clip now</b> key, <kbd>F8</kbd> by default.</span></li>
+          <li><span>Changed your PC? Run it again from <b>Settings → Run setup again</b>.</span></li>
+        </ul>
+      </div>
+      <figure class="shot"><img src="media/setup.jpg" width="720" height="420" loading="lazy" alt="The Welcome to Kill Clipper setup screen"><figcaption>The welcome screen. This test PC has no graphics card encoder, so it picked lighter CPU settings.</figcaption></figure>
+    </li>
+
+    <li id="start/play">
+      <div class="tut-text">
+        <span class="step-n">Step 3</span>
+        <h2>Play. Kills clip themselves.</h2>
+        <p>Join any server and play normally. The mod keeps the last minute or two of gameplay and saves a clip the moment you get a kill. There is no button to press.</p>
+        <ul class="checks">
+          <li><span><b>Streaks:</b> kills within 10 seconds of each other save as one clip, like "Triple kill".</span></li>
+          <li><span><b>Your deaths stay out:</b> a clip ends before you die.</span></li>
+          <li><span><b>Clip anything:</b> press <kbd>F8</kbd> to save the last few seconds right now. Change the key in Controls.</span></li>
+          <li><span><b>Smoothness:</b> <code>/killclip status</code> or the settings screen (<code>/killclip menu</code>) tells you if clips are smooth, with a tip if not.</span></li>
+        </ul>
+        <figure class="shot"><img src="media/settings.jpg" width="660" height="430" loading="lazy" alt="The Kill Clipper settings screen"><figcaption>Settings, from <code>/killclip menu</code> or Mod Menu.</figcaption></figure>
+      </div>
+      <figure class="shot"><img src="media/ingame.jpg" width="1280" height="720" loading="lazy" alt="A sword fight in a Minecraft obsidian arena with kill messages in chat"><figcaption>A frame from a saved clip: a 3-kill streak, right after the second kill.</figcaption></figure>
+    </li>
+
+    <li id="start/library">
+      <div class="tut-text">
+        <span class="step-n">Step 4</span>
+        <h2>Find your clips</h2>
+        <p>Press <b>Clip Editor</b> on the title screen. Every clip is listed with a thumbnail, how many kills it has and the server it came from.</p>
+        <ul class="checks">
+          <li><span>Search by name, server or tag like <code>3K</code> or <code>replay</code>, and filter the list.</span></li>
+          <li><span>Star a favourite, rename a clip, or delete it with everything that belongs to it.</span></li>
+          <li><span><b>Storage</b> caps the folder by size or age. Favourites and edited videos are never removed.</span></li>
+          <li><span>Clips are normal MP4 files in the <code>killclips</code> folder. <b>Open folder</b> takes you there.</span></li>
+        </ul>
+      </div>
+      <figure class="shot"><img src="media/library.jpg" width="760" height="720" loading="lazy" alt="The clip library listing kill clips with thumbnails and kill count tags"><figcaption>The clip library. The <b>REPLAY</b> tag means you can change the camera in the editor.</figcaption></figure>
+    </li>
+
+    <li id="start/edit">
+      <div class="tut-text">
+        <span class="step-n">Step 5</span>
+        <h2>Rewatch the fight from any camera</h2>
+        <p>Pick a clip and press <b>Edit</b>. The fight itself loads inside Minecraft, so you can watch it from first person, third person or a free spectator camera, then export a new video.</p>
+        <ul class="checks">
+          <li><span>Drag the yellow ends of the clip to trim it.</span></li>
+          <li><span>Split the camera track with <kbd>X</kbd>, click a part, and set its camera, <b>Speed</b> (slow-mo) and <b>Zoom</b>.</span></li>
+          <li><span>Spectator parts in a row become keyframes the camera glides through.</span></li>
+          <li><span>Add a freeze-frame (<kbd>F</kbd>) or your own text (<kbd>T</kbd>). <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes.</span></li>
+          <li><span>Press <b>Export</b>. Every frame is rendered on its own, so the video is smooth even on a slow PC. It lands in <code>killclips/Edited</code>.</span></li>
+        </ul>
+        <p class="more-link"><a href="#editor">All editor keys and a playable demo →</a></p>
+      </div>
+      <figure class="shot"><img src="media/editor.jpg" width="1280" height="720" loading="lazy" alt="The Clip Editor timeline with first person, third person and spectator camera parts"><figcaption>The real editor, partway through the triple kill. Green is first person, blue third person, orange spectator. The videos on the home page were made exactly like this.</figcaption></figure>
+    </li>
+
+    <li id="start/reel">
+      <div class="tut-text">
+        <span class="step-n">Step 6</span>
+        <h2>Make a highlight reel in one click</h2>
+        <p>In the Clip Editor press <b>Highlight reel</b>, then <b>Make highlight reel</b>. It picks your best clips, cuts them to the beat of the music and saves one video.</p>
+        <ul class="checks">
+          <li><span><b>Clips:</b> latest session, last 24 hours, last 7 days or everything. <b>How many: Auto</b> keeps the ones worth it.</span></li>
+          <li><span><b>Music:</b> a built-in beat that's free to post, your own music file, or none.</span></li>
+          <li><span><b>Replays: On</b> adds a slow-motion third-person replay of your best kills.</span></li>
+          <li><span>Reorder, remove or swap clips before making it. <b>Shape: 9:16</b> makes a vertical reel.</span></li>
+        </ul>
+      </div>
+      <figure class="shot"><img src="media/reel.jpg" width="680" height="720" loading="lazy" alt="The highlight reel screen with the picked clips and options"><figcaption>The highlight reel screen. It picked four clips by itself: 9 kills, about 38 seconds.</figcaption></figure>
+    </li>
+
+    <li id="start/share">
+      <div class="tut-text">
+        <span class="step-n">Step 7</span>
+        <h2>Share it</h2>
+        <p>Select a clip and press <b>Share</b>, or press <b>Get link</b> after an export.</p>
+        <ul class="checks">
+          <li><span><b>Get a link</b> uploads the video to catbox.moe (free, no account) and copies a link that plays right in Discord.</span></li>
+          <li><span><b>Shape: Vertical 9:16</b> crops it for TikTok, Shorts and Reels. <b>Make 9:16 copy only</b> saves it without uploading.</span></li>
+          <li><span>Anyone with the link can watch, so only share what you're happy to post.</span></li>
+        </ul>
+      </div>
+      <figure class="shot"><img src="media/share.jpg" width="760" height="200" loading="lazy" alt="The Share clip screen with Get a link and 9:16 options"><figcaption>The share screen.</figcaption></figure>
+    </li>
+
+    <li id="start/fix">
+      <div class="tut-text">
+        <span class="step-n">Step 8</span>
+        <h2>A kill wasn't clipped? Report it in one command.</h2>
+        <p>Kill Clipper reads kill messages on any server, but some servers word them in new ways. If one is missed, report it right after it happens.</p>
+        <div class="cmds">
+          <div><code>/killclip report</code><span>A kill wasn't clipped. Also saves the last 15 seconds as a clip.</span></div>
+          <div><code>/killclip report wrong</code><span>A clip was saved that wasn't your kill.</span></div>
+        </div>
+        <p>Both can be put on keys in <b>Controls → Kill Clipper</b>. The report is saved in <code>.minecraft/killclip-reports/</code>. It contains recent chat, so read it, then attach it to a <a href="#support">support ticket</a>.</p>
+      </div>
+      <div class="tut-side">
+        <h3>Also handy</h3>
+        <ul class="checks">
+          <li><span><b>Stats</b> in the Clip Editor shows kills, deaths, K/D and best streak for every server, saved only on your PC.</span></li>
+          <li><span><b>Test clip</b> in settings (or <code>/killclip test</code>) saves the last 10 seconds so you can check video and sound.</span></li>
+          <li><span><b>Import video</b> brings any MP4, MOV or MKV into the library to trim it.</span></li>
+        </ul>
+      </div>
+    </li>
+  </ol>
+
+  <div class="endcta" style="margin-top:56px">
+    <div><h2>Ready for your first clip?</h2><p>One jar in your mods folder. Recording starts the next time you join a server.</p></div>
+    <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.15.0</a><a class="btn ghost lg" href="#install">Install guide</a></div>
+  </div>
+</div></div>
+
 <!-- FEATURES -->
 <div class="page page-pad gutter" data-page="features" hidden><div class="inner">
-  <div class="head"><span class="eyebrow">Features</span><h1 class="page-title">Everything in Kill Clipper</h1><p class="sub">All of this is in v1.11.5.</p></div>
+  <div class="head"><span class="eyebrow">Features</span><h1 class="page-title">Everything in Kill Clipper</h1><p class="sub">All of this is in v1.15.0.</p></div>
 
   <div class="fgroup">
     <div><h2>Clipping</h2><p class="muted">What gets saved, and when.</p></div>
@@ -516,6 +705,7 @@ footer a:hover { color: var(--fg); }
       <li><b>Up to 2 minutes</b><span>Before-kill time goes from 5 to 120 seconds. A long streak saves up to 2 minutes, ending at the last kill.</span></li>
       <li><b>Deaths stay out</b><span>When you die, kills before it are saved right away, ending just before the death. The next clip starts after it.</span></li>
       <li><b>Auto buffer</b><span>The buffer sizes itself from your clip settings and lives on disk, so a long one doesn't use memory.</span></li>
+      <li><b>Save a clip now</b><span>Press <kbd>F8</kbd> (or your own key) to save the last few seconds of anything.</span></li>
       <li><b>MP4, MOV or MKV</b><span>Pick the file type in settings.</span></li>
     </ul>
   </div>
@@ -527,17 +717,19 @@ footer a:hover { color: var(--fg); }
       <li><b>Crystals, anchors and beds</b><span>Setting one off marks nearby players. Arrows and tridents count as hits too.</span></li>
       <li><b>Indirect kills</b><span>A player you damaged who dies in lava, the void or a fall within 10 seconds is your kill.</span></li>
       <li><b>Wins that send you to the lobby</b><span>Kills at the end of a match are saved before the server moves you.</span></li>
-      <li><b>Never your deaths</b><span>"You were killed by Bob" and "Bob won against You" are ignored.</span></li>
+      <li><b>Never your deaths</b><span>"You were killed by Bob" and "Bob won against You" are ignored. Assists and kills someone else finished don't count.</span></li>
+      <li><b>Report a miss</b><span><code>/killclip report</code> saves the moment and a report file when a kill wasn't clipped; <code>/killclip report wrong</code> when a clip wasn't yours.</span></li>
     </ul>
   </div>
   <div class="fgroup">
     <div><h2>Recording</h2><p class="muted">Its own recorder, tuned to keep your fps.</p></div>
     <ul class="flist">
       <li><b>Nothing to install</b><span>FFmpeg is inside the jar for Windows, macOS and Linux.</span></li>
+      <li><b>Sets itself up</b><span>The first launch tests every encoder on your PC and picks the encoder, fps and resolution. Run it again from Settings.</span></li>
       <li><b>GPU encoders</b><span>NVIDIA H.265, NVIDIA H.264, Intel or CPU. If one isn't available it falls back to CPU.</span></li>
       <li><b>Light on the game</b><span>Frames are converted on the graphics card and handed to the encoder in the background at low priority.</span></li>
       <li><b>Game audio</b><span>Minecraft's own sound by default. Whole-computer audio or no audio are in settings.</span></li>
-      <li><b>Smoothness check</b><span><code>/killclip status</code> shows game fps and the share of repeated frames.</span></li>
+      <li><b>Smoothness check</b><span>The settings screen and <code>/killclip status</code> show how smooth recording is, with a tip when it isn't.</span></li>
       <li><b>Plays nice with modpacks</b><span>Works alongside Sodium, Lithium and friends. If another mod clashes with an editor hook, the game still starts.</span></li>
     </ul>
   </div>
@@ -548,15 +740,33 @@ footer a:hover { color: var(--fg); }
       <li><b>Spectator keyframes</b><span>Drop keyframes and the camera glides through them on a smooth curve.</span></li>
       <li><b>Slow-mo and zoom</b><span>Speed from 0.25x to 2x and zoom from 1x to 4x, per part of the clip.</span></li>
       <li><b>Trim and split</b><span>Drag the ends to trim, split the camera track, merge parts back.</span></li>
+      <li><b>Freeze-frames, text and undo</b><span>Hold a moment with a freeze-frame, add your own text, and undo or redo any change.</span></li>
       <li><b>Smooth exports with sound</b><span>Every frame is rendered on its own, so exports are smooth even on a slow PC. Slow-mo slows the sound to match.</span></li>
       <li><b>Any video</b><span>Trim and convert MP4, MOV, MKV, AVI, WEBM and more, or import one into the clips folder.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Highlight reel</h2><p class="muted">A montage of your best kills, made for you.</p><a href="#start/reel">How to make one →</a></div>
+    <ul class="flist">
+      <li><b>Best clips picked</b><span>Every clip is rated: more kills, quick kills in a row, crystal and anchor kills, long shots and low-health wins.</span></li>
+      <li><b>Cut to the beat</b><span>Cuts land on the bar lines and each kill hits on the beat, with the built-in track or your own music.</span></li>
+      <li><b>Instant replays</b><span>The two best kills get a slow-motion third-person replay cut in after them.</span></li>
+      <li><b>Your call</b><span>Reorder, remove or swap clips first. Pick the time range, transitions, game sound and 9:16 shape.</span></li>
+    </ul>
+  </div>
+  <div class="fgroup">
+    <div><h2>Clip library</h2><p class="muted">Every clip, easy to find.</p></div>
+    <ul class="flist">
+      <li><b>Thumbnails and tags</b><span>Each clip shows a picture, its kill count (2K, 3K...), the server and a REPLAY tag when the camera can change.</span></li>
+      <li><b>Search and favourites</b><span>Search by name, server or tag, filter the list and star the clips you want to keep.</span></li>
+      <li><b>Rename and delete</b><span>Renaming or deleting a clip also handles its replay and thumbnail.</span></li>
+      <li><b>Storage limit</b><span>Cap the folder by size or age, or press Clean up now. Favourites and edited videos are never removed.</span></li>
     </ul>
   </div>
   <div class="fgroup">
     <div><h2>Sharing and stats</h2><p class="muted">Out of the game and into the group chat.</p></div>
     <ul class="flist">
       <li><b>Get a link</b><span>Uploads the clip to catbox.moe (free, no account) and copies a link. Anyone with the link can watch.</span></li>
-      <li><b>Send to Discord</b><span>Post straight to a channel through a webhook. Clips are shrunk to fit Discord's limit.</span></li>
       <li><b>Vertical 9:16</b><span>Saves a cropped vertical copy for Shorts, TikTok and Reels.</span></li>
       <li><b>Kill stats</b><span>Kills, deaths, K/D, most kills in one life and best multi-kill, per server and in total. <code>/killclip stats</code>.</span></li>
     </ul>
@@ -567,13 +777,49 @@ footer a:hover { color: var(--fg); }
 <div class="page page-pad gutter" data-page="editor" hidden><div class="inner">
   <div class="head"><span class="eyebrow">Clip Editor</span><h1 class="page-title">Rewatch the fight from any angle</h1><p class="sub">Every clip saves a small fight replay next to the video. Press <b>Clip Editor</b> on the main menu, pick a clip and press <b>Edit</b>. The fight loads inside Minecraft, fully offline.</p></div>
 
-  <div class="split">
+  <figure class="shot wide"><img src="media/editor.jpg" width="1280" height="720" loading="lazy" alt="The real Clip Editor in Minecraft with camera parts on the timeline"><figcaption>The real editor in Minecraft, editing the triple kill from the home page.</figcaption></figure>
+
+  <div class="head" style="margin-top:48px"><h2>Try it in your browser</h2><p class="sub">Pick a camera or scrub the timeline.</p></div>
+    <div class="editor" aria-label="Playable demo of the Clip Editor">
+      <div class="ed-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="file">Clip Editor · double-kill.kcreplay</span><span class="tag">LIVE DEMO</span></div>
+      <div class="viewport" id="viewport">
+        <canvas id="scene" aria-hidden="true"></canvas>
+        <div class="hud v-poster" id="v-poster" hidden>Replay demo needs WebGL. The real editor runs inside Minecraft.</div>
+        <div class="hud v-flash" id="v-flash"></div>
+        <div class="hud v-pov" id="v-pov"><i></i><span>1ST PERSON</span></div>
+        <div class="hud v-feed" id="v-feed"></div>
+        <div class="hud v-cross" id="v-cross" aria-hidden="true"></div>
+        <div class="hud v-banner" id="v-banner">DOUBLE KILL</div>
+        <div class="hud v-fx" id="v-fx">0.3x SLOW-MO · ZOOM 1.6x</div>
+      </div>
+      <div class="ed-controls">
+        <button class="ed-play" id="ed-play" type="button" aria-label="Pause"></button>
+        <span class="ed-time" id="ed-time">0:00.0 / 0:10.0</span>
+        <div class="seg" role="group" aria-label="Camera">
+          <button type="button" data-pov="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-pov="1" aria-pressed="false"><i style="background:var(--pov1)"></i>1st person</button>
+          <button type="button" data-pov="3" aria-pressed="false"><i style="background:var(--pov3)"></i>3rd person</button>
+          <button type="button" data-pov="S" aria-pressed="false"><i style="background:var(--povs)"></i>Spectator</button>
+        </div>
+        <span class="ed-hint">Pick a camera, or click the timeline to scrub.</span>
+      </div>
+      <div class="tracks" id="tracks">
+        <div class="trow"><span>CLIP</span><div class="tlane"><div class="clipbar"></div><i class="kmark" style="left:36%"></i><i class="kmark" style="left:65%"></i></div></div>
+        <div class="trow"><span>CAMERA</span><div class="tlane" id="camlane"></div></div>
+        <div class="trow"><span>SPEED</span><div class="tlane thin"><div class="sseg" style="left:62%;width:8%"></div></div></div>
+        <div class="playhead" id="playhead"></div>
+      </div>
+    </div>
+    <p class="demo-cap">A small, playable copy of the in-game Clip Editor. The fight is a made-up example; the cameras, slow-mo and timeline work like the real thing.</p>
+
+  <div class="split" style="margin-top:56px">
     <div style="display:grid;gap:28px">
       <div><h3 style="margin-bottom:12px">The timeline</h3>
         <ul class="checks">
           <li><span><b>Clip track.</b> Drag the yellow ends to trim. Export only renders the part between them.</span></li>
           <li><span><b>Camera track.</b> The fight is split into parts. Click a part, then set its POV, Speed and Zoom.</span></li>
           <li><span><b>Spectator keyframes.</b> Fly to a spot and drop a keyframe. Add more and the camera glides through them.</span></li>
+          <li><span><b>Freeze-frames and text.</b> <kbd>F</kbd> holds a moment, <kbd>T</kbd> adds your own text to the export. <kbd>Ctrl</kbd>+<kbd>Z</kbd> and <kbd>Ctrl</kbd>+<kbd>Y</kbd> undo and redo.</span></li>
           <li><span><b>Replays look like what you saw.</b> Your aim is recorded every frame, along with swings, crystal placing and held-item cooldown.</span></li>
         </ul>
       </div>
@@ -601,6 +847,9 @@ footer a:hover { color: var(--fg); }
             <tr><td><kbd>K</kbd></td><td>Drop a spectator keyframe</td></tr>
             <tr><td><kbd>C</kbd></td><td>Move the keyframe to where the camera is now</td></tr>
             <tr><td><kbd>W A S D</kbd></td><td>Fly the spectator camera. <kbd>Space</kbd> up, <kbd>Shift</kbd> down, <kbd>Ctrl</kbd> faster</td></tr>
+            <tr><td><kbd>F</kbd></td><td>Add a freeze-frame at the playhead</td></tr>
+            <tr><td><kbd>T</kbd></td><td>Add text</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> · <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Undo, redo</td></tr>
             <tr><td><kbd>E</kbd></td><td>Hide or show the editor</td></tr>
             <tr><td><kbd>H</kbd></td><td>Show the full key list</td></tr>
           </tbody>
@@ -610,7 +859,7 @@ footer a:hover { color: var(--fg); }
   </div>
   <div class="endcta" style="margin-top:56px">
     <div><h2>Try it on your own fights</h2><p>Install the mod, get a kill, and the replay is waiting in the Clip Editor.</p></div>
-    <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.11.5</a></div>
+    <div class="cta"><a class="btn primary lg" data-dl href="#">Download v1.15.0</a></div>
   </div>
 </div></div>
 
@@ -619,8 +868,8 @@ footer a:hover { color: var(--fg); }
   <div class="head"><span class="eyebrow">Download</span><h1 class="page-title">Get Kill Clipper</h1><p class="sub">One jar. FFmpeg and the recorder are inside, so there's nothing else to install.</p></div>
   <div class="dl">
     <div class="dl-info">
-      <span class="eyebrow" data-reldate>Latest release · 11 Nov 2026</span>
-      <span class="dl-file">killclipper-1.11.5.jar</span>
+      <span class="eyebrow" data-reldate>Latest release · 17 Nov 2026</span>
+      <span class="dl-file">killclipper-1.15.0.jar</span>
       <div class="facts">
         <span class="chip">Minecraft 1.21.11</span>
         <span class="chip">Fabric Loader 0.19.3+</span>
@@ -628,7 +877,7 @@ footer a:hover { color: var(--fg); }
         <span class="chip">Java 21+</span>
         <span class="chip" data-size>109 MB</span>
       </div>
-      <div class="hash"><span>SHA-256</span><code id="sha">95b7cfaf567c64e04dc9d03f3cac02c58d54af85e004c45920584efa9acbf1ae</code><button class="copy" id="copy-sha" type="button">Copy</button></div>
+      <div class="hash"><span>SHA-256</span><code id="sha">bd6fcbae30ab39945a1a601f668654663de6ca9a2646c2febe5ffdfab2930f12</code><button class="copy" id="copy-sha" type="button">Copy</button></div>
     </div>
     <div class="dl-actions">
       <a class="btn primary lg" data-dl href="#">
@@ -653,7 +902,7 @@ footer a:hover { color: var(--fg); }
     </aside>
     <div style="display:grid;gap:18px">
       <h3>Next step</h3>
-      <p class="sub">Put the jar in your launcher's mods folder and delete any older Kill Clipper jar. The install guide has steps for the official launcher, Prism, CurseForge, Modrinth App, ATLauncher and MultiMC.</p>
+      <p class="sub">New here? The <a href="#start">step-by-step guide</a> walks through setup, the editor and highlight reels. Put the jar in your launcher's mods folder and delete any older Kill Clipper jar. The install guide has steps for the official launcher, Prism, CurseForge, Modrinth App, ATLauncher and MultiMC.</p>
       <div class="cta"><a class="btn ghost" href="#install">Open the install guide</a></div>
     </div>
   </div>
@@ -668,7 +917,7 @@ footer a:hover { color: var(--fg); }
     <aside class="reqbox">
       <h3>Before you start</h3>
       <ul class="checks">
-        <li><span>Download <a href="#get">killclipper-1.11.5.jar</a></span></li>
+        <li><span>Download <a href="#get">killclipper-1.15.0.jar</a></span></li>
         <li><span>Get <a href="https://modrinth.com/mod/fabric-api" target="_blank" rel="noopener">Fabric API</a> for 1.21.11 (most launchers can add it for you)</span></li>
         <li><span>Delete any older <code>killclipper-*.jar</code> from the mods folder</span></li>
       </ul>
@@ -685,6 +934,8 @@ footer a:hover { color: var(--fg); }
           <tr><td><code>/killclip menu</code></td><td>Opens the settings: FPS, resolution, quality, encoder, file type, buffer and clip padding. Mod Menu adds a button for it too.</td></tr>
           <tr><td><code>/killclip status</code></td><td>Shows game fps and the share of frames repeated. Under a few percent is smooth. If the game runs below your recording FPS, lower the recording FPS to match.</td></tr>
           <tr><td><code>/killclip stats</code></td><td>Your kills, deaths, K/D and best streaks, per server and in total.</td></tr>
+          <tr><td><kbd>F8</kbd></td><td>Saves a clip of the last few seconds right now. Change the key in Controls → Kill Clipper.</td></tr>
+          <tr><td><code>/killclip report</code></td><td>A kill wasn't clipped: saves the last 15 seconds and a report in <code>killclip-reports</code>. Add <code>wrong</code> when a clip wasn't your kill.</td></tr>
           <tr><td><code>/killclip test</code></td><td>Saves a test clip so you can check video and sound.</td></tr>
           <tr><td><code>/killclip folder</code></td><td>Opens the clips folder.</td></tr>
           <tr><td><code>/killclip on</code> · <code>off</code></td><td>Turns kill clipping on or off.</td></tr>
@@ -709,7 +960,7 @@ footer a:hover { color: var(--fg); }
               <option>Bug</option><option>Crash</option><option>Kill not clipped</option><option>Clip quality or lag</option><option>Clip Editor or replay</option><option>Feature request</option><option>Other</option>
             </select></div>
           <div class="field"><label for="t-ver">Mod version</label>
-            <select id="t-ver"><option>1.11.5</option><option>1.11.4</option><option>1.11.3</option><option>1.11.2</option><option>1.11.1</option><option>1.11.0</option><option>Older</option></select></div>
+            <select id="t-ver"><option>1.15.0</option><option>1.14.1</option><option>1.14.0</option><option>1.13.0</option><option>1.12.0</option><option>1.11.5</option><option>Older</option></select></div>
         </div>
         <div class="row2">
           <div class="field"><label for="t-launcher">Launcher</label>
@@ -736,7 +987,7 @@ footer a:hover { color: var(--fg); }
     <div>
       <h3 style="margin-bottom:8px">Common fixes</h3>
       <div class="faq">
-        <details><summary>Do I need Medal, OBS or FFmpeg?</summary><p>No. The recorder and FFmpeg are inside the jar, which is why it's about 114 MB.</p></details>
+        <details><summary>Do I need Medal, OBS or FFmpeg?</summary><p>No. The recorder and FFmpeg are inside the jar, which is why it's over 100 MB.</p></details>
         <details><summary>Where are my clips?</summary><p>In the <code>killclips</code> folder of your Minecraft or instance folder. Videos you export from the editor are in <code>killclips/Edited</code>. The Clip Editor on the main menu lists both.</p></details>
         <details><summary>My clips look choppy.</summary><p>Run <code>/killclip status</code> after a match. If the game fps is lower than your recording FPS, set the recording FPS to match (for example 60). On NVIDIA cards, pick NVIDIA H.265. Sodium, Lithium, FerriteCore and ImmediatelyFast give the biggest fps boost.</p></details>
         <details><summary>A kill wasn't clipped.</summary><p>Open a ticket and paste the exact chat line the server showed. That's all that's needed to add the server's format.</p></details>
@@ -771,7 +1022,12 @@ footer a:hover { color: var(--fg); }
 <div class="page page-pad gutter" data-page="changelog" hidden><div class="inner">
   <div class="head"><span class="eyebrow">Changelog</span><h1 class="page-title">Release history</h1><p class="sub" id="cl-sub">Every release, newest first. Times are UTC.</p></div>
   <div class="list cl" id="cl-list">
-<details open><summary><span class="ver">1.11.5</span><span class="sum">Replays look like what you saw<span class="latest">LATEST</span></span><span class="time">11 Nov 01:57</span></summary><div class="notes"><ul><li><b>First-person hands:</b> replays now record every swing, the hand bob when you place crystals or blocks, and the attack cooldown that lowers your held item, then play them back exactly. This works for clips recorded with 1.11.5 or newer. Older clips keep the old, rougher swing.</li><li><b>Spectator camera:</b> flying around while editing is smooth now. The camera moves every frame instead of 20 times a second, even while the replay is paused.</li><li><b>Players blinking out:</b> if you use EntityCulling, it no longer hides players during replays. It was guessing too late when the camera jumped, so players disappeared in spectator view.</li><li><b>Blocks popping in:</b> an export now waits until the world around the camera is drawn before it records the first frame.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.5" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details open><summary><span class="ver">1.15.0</span><span class="sum">Smoother recording and a first-run setup<span class="latest">LATEST</span></span><span class="time">17 Nov 03:38</span></summary><div class="notes"><ul><li>The picture is shrunk on the GPU before it is copied, and frames go to the encoder without extra copies, so recording costs fewer fps.</li><li>NVIDIA encoders are tuned so frames never pile up, and the bitrate is capped for smaller files (50 Mbit/s for 1080p 120 fps H.265).</li><li>The settings screen shows how smooth recording is right now, with a tip when it isn't.</li><li>A welcome screen on first launch (once after updating, too) tests each encoder on your PC and picks the encoder, fps and resolution for you. Run it again from Settings.</li><li>New <b>Save a clip now</b> key: F8, changeable in Controls.</li></ul><h4>Sharper kill detection</h4><ul><li>If you hit someone and another player gets the kill, it no longer counts as yours. Assists don't count either.</li><li>Deaths are seen even on servers that hide other players' health.</li><li>Nicknames from the player list are understood.</li><li>Leaving with /lobby, /hub and similar right after hitting someone no longer counts as a win.</li><li>More server formats: Hypixel themed and final kills, The Pit, practice Winner/Loser, bounty and lifesteal, combat logging, and lines that say &quot;You&quot;.</li><li>Kills are placed where your opponent went down, not on the victory screen or in the lobby, so clips and highlight reels center on the kill. A win announced again in the lobby no longer counts twice.</li></ul><h4>Report a missed or wrong kill</h4><ul><li><code>/killclip report</code> when a kill wasn't clipped (it also saves the last 15 seconds), or <code>/killclip report wrong</code> when a clip wasn't your kill. Both can be bound to keys in Controls → Kill Clipper.</li><li>The report is saved in <code>.minecraft/killclip-reports/</code>. It holds recent chat, so read it before you send it.</li></ul><h4>Quiet</h4><ul><li>No more &quot;Loaded. Recording...&quot; message in chat.</li><li>&quot;Saving clip&quot; / &quot;Clip saved&quot; are off by default; turn Notifications on in the settings to get them back.</li><li>Problems show once above the hotbar, never in chat.</li></ul><h4>Clip library and editor</h4><ul><li>Thumbnails, titles, tags, search, filters and favourites in the library. Rename or delete a clip with everything that belongs to it.</li><li>Storage limits by size or age, with &quot;Clean up now&quot;. Favourites and edited videos are never removed.</li><li>Editor: undo/redo (Ctrl+Z / Ctrl+Y), freeze-frames (F), and your own text (T) that shows in the exported video.</li></ul><h4>Install</h4><p>Download <b>killclipper-1.15.0.jar</b> below and put it in your <code>mods</code> folder in place of the old one. Only that one file is needed.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.15.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.14.1</span><span class="sum">Highlight reel: no text by default</span><span class="time">17 Nov 01:27</span></summary><div class="notes"><ul><li>Highlight reels are now clean: no kill popups, no &quot;Highlights&quot; intro and no &quot;GG&quot; closing title. Just your clips, the transitions and the music.</li><li>Want the text back? Press <b>Text: Off</b> on the highlight reel screen to switch it to <b>Text: On</b>. The choice is remembered.</li></ul><h4>Install</h4><p>Download <b>killclipper-1.14.1.jar</b> below and put it in your <code>mods</code> folder in place of the old one. Only that one file is needed.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.14.1" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.14.0</span><span class="sum">A smarter highlight reel</span><span class="time">16 Nov 21:00</span></summary><div class="notes"><p>Press <b>Make highlight reel</b> and everything is done for you.</p><ul><li><b>Best clips picked for you:</b> every clip is rated. More kills count most, then quick kills in a row, crystal and anchor kills, long-range hits and wins on low health. Clips of the same fight are only used once. <b>How many: Auto</b> keeps the clips that are worth it, up to about a minute.</li><li><b>Good pacing:</b> the best clip opens the reel, the rest follow in the order they happened, and the second best closes it.</li><li><b>On the beat:</b> every cut lands on a bar line, the two beats before a kill speed up slightly, and the kill hits on the beat. With your own music the tempo and bar lines are found automatically, and a quiet intro is skipped.</li><li><b>Polish:</b> popups for each kill (Kill, Double kill, Triple kill... with Clutch, Long shot or Explosive under it), slow motion on the final kill, a &quot;Highlights&quot; intro and a &quot;GG&quot; closing title, and transitions that follow the music (a zoom into streaks, a flash into replays).</li><li><b>Instant replays:</b> for the two best kills that have a fight replay, the mod films the kill again from the third-person camera in slow motion and cuts it in after the kill. This plays the replay in the game for a few seconds; press Esc to skip it. Turn it off with <b>Replays: Off</b>.</li><li><b>Check before making:</b> the list shows the picked clips. Select one to <b>Move up</b>, <b>Move down</b>, <b>Remove</b> or <b>Swap</b> it for the next best clip; double-click to watch it. <b>Auto pick</b> starts over.</li><li><b>Options:</b> <b>Shape: 9:16</b> makes a vertical reel for TikTok, Shorts and Reels. <b>Then: Get link</b> uploads the reel and copies a share link instead of opening it.</li></ul><p>New clips save the details of each kill (when it happened, how, your health and the distance) so the reel can use them. Older clips still work, rated on their number of kills.</p><h4>Looks</h4><p>The highlight reel screen uses the new flat style from v1.13.0.</p><h4>Install</h4><p>Download <b>killclipper-1.14.0.jar</b> below and put it in your <code>mods</code> folder in place of the old one. Only that one file is needed.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.14.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.13.0</span><span class="sum">A cleaner, modern look</span><span class="time">16 Nov 20:45</span></summary><div class="notes"><ul><li>Every screen now has a flat, dark style: see-through panels with a thin red accent line, flat buttons that light up smoothly when you point at them, and the main action on each screen (Edit, Export, Make highlight reel, Get a link) filled in red.</li><li>Settings show their name and value side by side, with ON in green, so you can read them at a glance.</li><li>In the clip list, the picked clip is marked with a red bar, and clips you can edit with camera views have a small REPLAY tag.</li><li>Screens fade in and slide up slightly when they open.</li><li>The editor, stats table, export progress bar and on-screen messages use the same colours.</li><li>The settings screen now fits small windows; before, the Done button could be cut off.</li></ul><p>Nothing works differently: every button, key and setting does exactly what it did before.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.13.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.12.0</span><span class="sum">Highlight reel</span><span class="time">11 Nov 04:58</span></summary><div class="notes"><p>Turn a session of kills into one montage with a single button.</p><ul><li>Open <b>Clip Editor</b> on the title screen and press <b>Highlight reel</b>.</li><li>It picks your best clips (biggest streaks first, then your newest kills) and plays them in the order they happened.</li><li>Each kill is cut down to the moment around it, and a streak keeps all of its kills.</li><li>Choose which clips: <b>Latest session</b>, <b>Last 24 hours</b>, <b>Last 7 days</b> or <b>All clips</b>, and how many (3 to 20).</li><li>Transitions: <b>Mixed</b>, <b>Fade</b>, <b>Flash</b>, <b>Slide</b> or <b>Hard cut</b>.</li><li>Music: a <b>built-in beat</b> made by the mod, so it is free to post on YouTube or TikTok, <b>your own music file</b> (mp3, wav, ogg, m4a, flac), or <b>none</b>. The cuts land on the beat of the built-in track.</li><li><b>Game sound</b> can be kept under the music at 30%, 60% or 100%, or turned off.</li><li>The reel is saved to <code>killclips/Edited/</code> and opens in your video player when it is done.</li></ul><h4>Install</h4><p>Download <b>killclipper-1.12.0.jar</b> below and put it in your <code>mods</code> folder in place of the old one. Only that one file is needed.</p><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.12.0" target="_blank" rel="noopener">Release on GitHub</a></div></details>
+<details><summary><span class="ver">1.11.5</span><span class="sum">Replays look like what you saw</span><span class="time">11 Nov 01:57</span></summary><div class="notes"><ul><li><b>First-person hands:</b> replays now record every swing, the hand bob when you place crystals or blocks, and the attack cooldown that lowers your held item, then play them back exactly. This works for clips recorded with 1.11.5 or newer. Older clips keep the old, rougher swing.</li><li><b>Spectator camera:</b> flying around while editing is smooth now. The camera moves every frame instead of 20 times a second, even while the replay is paused.</li><li><b>Players blinking out:</b> if you use EntityCulling, it no longer hides players during replays. It was guessing too late when the camera jumped, so players disappeared in spectator view.</li><li><b>Blocks popping in:</b> an export now waits until the world around the camera is drawn before it records the first frame.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.5" target="_blank" rel="noopener">Release on GitHub</a></div></details>
 <details><summary><span class="ver">1.11.4</span><span class="sum">Edit never opened some replays</span><span class="time">11 Nov 01:37</span></summary><div class="notes"><h4>Fixed</h4><ul><li><b>Edit never opened some replays.</b> If a clip started right at the beginning of its recording (for example, a kill soon after joining a match), the replay waited forever before the world even loaded. Those replays open now.</li><li><b>Kill clipping could switch itself off on Windows.</b> On startup the mod updates its settings file, but Windows didn't allow the file to be replaced while the mod was still reading it, and the mod then turned kill clipping off. Settings now save properly, and if saving ever fails, clipping stays on.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.4" target="_blank" rel="noopener">Release on GitHub</a></div></details>
 <details><summary><span class="ver">1.11.3</span><span class="sum">Faster replays</span><span class="time">11 Nov 01:11</span></summary><div class="notes"><ul><li>Pressing Edit no longer freezes the game while the replay file is read. It loads in the background while the clip list says &quot;Opening the replay...&quot;.</li><li>Opening a replay skips the old sounds, particles, explosions and chat from before the clip, so it gets to your clip faster. This matters most after a long time on one server.</li><li>Going back on the timeline no longer reads the whole replay file from disk again.</li></ul><h4>Download tip</h4><ul><li>Only download <code>killclipper-1.11.3.jar</code>. Releases no longer include the &quot;-sources&quot; jar, which looked the same but crashed the game.</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.3" target="_blank" rel="noopener">Release on GitHub</a></div></details>
 <details><summary><span class="ver">1.11.2</span><span class="sum">A replay that never opened could take over a real server</span><span class="time">11 Nov 00:44</span></summary><div class="notes"><h4>Fixed</h4><ul><li><b>A replay that never opened could take over a real server.</b> If Edit got stuck on &quot;Opening the replay...&quot;, the replay kept running in the background. Joining a server afterwards made the game flicker between the replay and the server, and some servers would not let you in. Joining any server now closes a replay first, and a replay never touches a world that isn't its own.</li><li><b>Edit no longer hangs forever.</b> If a replay hasn't opened after 30 seconds, it stops and the clip list says why it couldn't load.</li><li>Pressing Done or Esc in the clip list while a replay is opening cancels it.</li><li>When a replay can't load, <code>logs/latest.log</code> now says what went wrong (look for lines starting with &quot;Replay&quot;).</li></ul><a class="full" href="https://github.com/21XDneverloses/Minecraft-kill-clipper/releases/tag/v1.11.2" target="_blank" rel="noopener">Release on GitHub</a></div></details>
@@ -813,7 +1069,7 @@ footer a:hover { color: var(--fg); }
       <a class="brand" href="#home" style="margin-bottom:12px"><span class="brand-mark" aria-hidden="true"></span>Kill Clipper</a>
       <p>Made by 21xd_. MIT licensed. FFmpeg is GPL; see <code>FFMPEG_NOTICE.txt</code> in the jar. Not an official Minecraft product. Not affiliated with Mojang, Microsoft or Medal.</p>
     </div>
-    <div><h4>Mod</h4><ul><li><a href="#features">Features</a></li><li><a href="#editor">Clip Editor</a></li><li><a href="#get">Download</a></li><li><a href="#install">Install guide</a></li><li><a href="#changelog">Changelog</a></li></ul></div>
+    <div><h4>Mod</h4><ul><li><a href="#start">Get started</a></li><li><a href="#features">Features</a></li><li><a href="#editor">Clip Editor</a></li><li><a href="#get">Download</a></li><li><a href="#install">Install guide</a></li><li><a href="#changelog">Changelog</a></li></ul></div>
     <div><h4>Help</h4><ul><li><a href="#support">Support tickets</a></li><li><a href="#team">Team</a></li><li><a data-releases href="#">All releases</a></li><li><a data-source href="#">Source code</a></li></ul></div>
   </div>
 </footer>
@@ -823,7 +1079,7 @@ footer a:hover { color: var(--fg); }
 <script>
 (function () {
   var REPO = "21XDneverloses/Minecraft-kill-clipper";
-  var VERSION = "1.11.5";
+  var VERSION = "1.15.0";
   var JAR = "https://github.com/" + REPO + "/releases/download/v" + VERSION + "/killclipper-" + VERSION + ".jar";
   var SKIN = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAHCElEQVR4Xu1bTXPdNBS1m/QleS/Z0jZtZ5qUX1sW8AfKtBvYMyzoAroDhkXLDP8H46Ora90PSZb9nDQLDnOwLV1f6RzJsmO/dl0Nffj/MO4MtPU8Pz9PvPD7U64JlPR+ENvCJuwubjuc4ERLJtEX2oxIkecYcHvyWMM14QrqqIRr0T3v06zQI04mXMQybDmJy+8KmmCF2+M7wSQ2xyBcTn3JiwvXwRbdlZih1+3fBVzzTrSkvQQuzKXgsgHZwipyojc0wHVIFTjRif003RO1AZzENVFDPtgLzscZNAVVkRGeqIWz+GSCyFMAdbAv95Nz2FxYj5rQGFZEEjwtgDkD0uI3cVwD0Hi+A/nSDLit2v56XF5eDZeXl3VeZcoiO2PISpZg4vRi3GNLPsocNreoC8G6PSvIEshteT8mPIaA3M6xFscw5cG4TPnISWxplK9IqDRA7ruEzVSjWYKtl3cVLncxhrkyvpzbZgDjX3VEBS7xIpIJYSpPUGsDx9bBYhJkO7ZcI7cGfPzx20BrQNQ8/P3qZvjnz1/DMZJyPPZXcmvYnOVjL/47rXgGMIRnBs6NyRuprs0j4e4qJvfUFpfRMUQfDodJPPjXz98Hfv7lfWbea3AsyOcj+X6/H/Zj3nRLHG+T421xf9hP7YFTR9bC6Q5oyUkx6GTo7EgpXpoAfvyBxIFU9i7QxnMMCz87OwvPB9jiuQAmwAA2gTuT17EJxIybjuXWQZ4wdfawp5EzsQr9+N/N9VfD7fNnI58Ot9dPw/b1i2eBr66fBBNqtDktYKAkz6Q/fnobaOPXQD3xkfhoQjDAjpU8hgFPhtcQDxOiAUzUsVB03orPG6DbKxnwKc5UFWy72oj8DIjXrol1gMjbOOKvX8btC5oR0oASbT6NvmjA7+tngLMpiqd7dDKAZ0AdN8+TAV+/vJ6I4+MNKM8AXqtsfAsmsYGZP3hUmakPC93ubFzkdqpjJWIx3O12xMZziHQXsbR9zdQruOHurNiFRCMQVTTgXB9TbDLBxZdo8jBtf7hPon4WLkE7+9DILoqSDb/ZdcM3I7GV5TRbYIA3DbE2npgffdD2KVNfQJoLLskS8r3+bBxNbLFYQoRcN3DMD0CPH58G4Rh9xOM5BAJZvD13etcQTKB3DEqguSTbDUhwopYwjOYoiITBgPRgJQ1AZ7B/eno6xj4OsdhyPQvHlp9OA8UtGGbx8whT9aeXBpwH07sGOFE1xr/cJqYpzTPgMI0STGBxbMjJycnwaCTEswEcC7F2BrCZibEMM2pPBsg+cQxyqldyavXTSyGdnFv9JQv1fAlADNYCGEEjl8TziCIOBoBhJpySAWwan8OjzgtlMHkn7h6Ctj+Z+gLw3EpwSZZQGsAzAZ3nkeT7NAviGUCXQrps+BKh82i2IJ7PL9H2J1M/C5ekTv1eDm+A0VE2gBc0OY3ZCGkA4k9HwkCO4UuGj3MGXE379B7D9k/H1AzY7C6A2yCmG01Tu6LLy4ANCJcALpnxGAa82fUuHvQG+Jc3tj+ZeoHMY5Bd1DzLn8XA6TYYp3/4MoQFKEMYRQY8Ctc/PwfY2VKbAUx+9JVEf2xcJ5CR33WpQX17wTFW0zA1Zbm4LYE8opZWfI41s0DksYJK4gM/vFPT3xpgIQzpC/ZoNIQcB3OrWtpefBu1EZa2vhVq7dbquq0NuDewqoy6TFENGxiwsMWANefMo5i1WLGJAf9jQ1SGKmLLCB05f95qHJ16YYLK7wYePlr77uJEgat7yDims6Vzlz8NbIGj2zw6QRYPLOvqE+8Ad9WXNXnXnFPENslKWUrlBo1hi3FXeRtwF03Xctbq7hvNfWkOBLLB2cIVWJNnzTlfELK7S7rOv0WwtHEEn5lKRLkPqaEYrd4YyZcteLFiYl379sMGf/cvveCYTvc7AWVDWlDUqGHCMgakN0k61MMa8PnD+/Dtv2TAHGBAo4zNoH9gYV6h2WALawBGH9/+mwzIKMVPe2zZNsg0FpGfAdaAwvnWAH7f12QAYPLqS6DQqEJLjEYS7L4epTfKvTHGkuutAXPstkRVe7nSiTmGVuAcO4lMHzNFE2p1S+BEtLA0I6zAOXYPAE7EElpBoPpmIP7xhY0Da6NYqlPlpaCAaiWhNJKKWBvc+kDkz93yeYHuHPFzuFxEEXugD6n3PgMqXjhRNVrD/Pd/+vbP3/nxyVzW8Uxg49ABB9nZSseb4XOokkGu9ktpv+dr0gdXSRuDDjSBu+zFEErlDXCijqH9Dphj2+fvzonKa5xbEURRphbQIgrXeussIWH+M3iJnUChfwG1ugLiKfNnOhHH0AqcY7cGNWnZQqBYwZ1vG+Ec6af39BP8T3HfCi2x+9LgP3P5d4DNjLe+JN4ziCz9Y65I+y7gt+Kfv2kEw15Pfyf8B+FTpvcjlq0TAAAAAElFTkSuQmCC";
   var CAPE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAACinX6EAAACWElEQVR4Xu2Xv0ocURTGF58hFiYg9nkCi3R5Apu8gp2dYAJiYxEklUUIJIIQLWKzFiFhQVhsBLXYJRvdhbAa10KIiBapR3+znMvJyawzrnOH1b0ffOz8c858v3vunbFUutFa/SDC77a2Ey3n5ze/ZTL3fDB6W6lG3ztnsQn5YWffBWebY3LeBr3Nts7ASgBU/1w6CNr6nA2JZ9c3nPMEcLDyLNpZenLv+6QKAOV2Jw6Jd6dLUftsIjo+nYi35TjX9AqeJ4DfX19GGADU//Kq1Pe9Mkl3AAXxSe1pbNlP6oCZj6v/OU8AEt57J2gAh2+6gTsroy48x2wHMNo2fB4ACH5UnnTh68ujxQCQKfBzrhu49Xnc/XIsKwA9DWydLJLwGBgAwDyHNwg8rAAgtBStv+5uU9xOAV8AJDw1AdCpTDkg3gFgRpviuLEwEv8CwXaADa7dLwBqaQAyDbDse4EgADYOf7nAtgN4HRYJQMLTAdjrNOBhCY+kkO0ApL8EbWhtmQa2TprOLxbjV6+8fajNmqAB1N6P3fm+qdIABIK2qAgAGkIvALl3AQ/7aa8W/bj668JacY5ruLbXAqgBYFsnTRYAXQAAFkO9FngDwAg3m81Ecz4rAIFg66SJ4OIkALIueAXAVMDyf4DsC4As4e8LQH+BMuLyVagXx1w/jy0ACc+xIgEgHVQAyDZfhF7XgCRrKEUBYB1orb34B4Qe+dwBDJpkMdTBvY3+IIq2t10go687wv7do1ISBL4FhqIDEEEby88Tu8Be+2ilIQxd+KCgoKCgoKCgoAJ0DV4O6JrwizEZAAAAAElFTkSuQmCC";
@@ -838,21 +1094,41 @@ footer a:hover { color: var(--fg); }
   setLinks();
 
   /* Routing */
-  var ROUTES = ["home", "features", "editor", "get", "install", "support", "team", "changelog"];
+  var ROUTES = ["home", "start", "features", "editor", "get", "install", "support", "team", "changelog"];
   var menuBtn = $("menu-btn"), links = $("navlinks"), current = "home";
   menuBtn.addEventListener("click", function () { var o = links.classList.toggle("open"); menuBtn.setAttribute("aria-expanded", o ? "true" : "false"); });
   function route() {
-    var r = (location.hash || "").replace("#", "");
+    var full = (location.hash || "").replace("#", ""), r = full.split("/")[0];
     if (ROUTES.indexOf(r) < 0) r = "home";
     current = r;
     document.querySelectorAll("[data-page]").forEach(function (p) { p.hidden = p.getAttribute("data-page") !== r; });
     document.querySelectorAll("[data-route]").forEach(function (a) { if (a.getAttribute("data-route") === r) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     links.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false");
-    window.scrollTo(0, 0);
+    var target = full.indexOf("/") > 0 ? document.getElementById(full) : null;
+    if (target) setTimeout(function () { target.scrollIntoView({ block: "start" }); }, 0); else window.scrollTo(0, 0);
     if (r === "team") startSkin();
-    if (r === "home") demoResize();
+    if (r === "editor") demoResize();
+    var rv = $("rf-video");
+    if (rv) { if (r === "home") { var pp = rv.play(); if (pp && pp.catch) pp.catch(function () {}); } else rv.pause(); }
+    document.querySelectorAll("video.inline-vid").forEach(function (v) { if (r !== "start") v.pause(); });
   }
   window.addEventListener("hashchange", route);
+
+  /* Real footage tabs */
+  (function () {
+    var v = $("rf-video"), file = $("rf-file"); if (!v) return;
+    var tabs = document.querySelectorAll(".rf-tabs button");
+    tabs.forEach(function (b) {
+      b.addEventListener("click", function () {
+        tabs.forEach(function (o) { o.setAttribute("aria-selected", o === b ? "true" : "false"); });
+        v.parentNode.classList.toggle("tall", b.hasAttribute("data-tall"));
+        v.poster = b.getAttribute("data-poster"); v.src = b.getAttribute("data-src");
+        file.textContent = b.getAttribute("data-file");
+        var p = v.play(); if (p && p.catch) p.catch(function () {});
+      });
+    });
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { v.removeAttribute("autoplay"); v.pause(); v.controls = true; }
+  })();
 
   /* Audio tile bars */
   (function () { var w = $("wave"), h = [30, 55, 80, 45, 95, 60, 35, 70, 100, 50, 75, 40, 88, 58, 32, 66, 92, 48, 72, 38, 84, 54, 28, 62]; h.forEach(function (v) { var i = document.createElement("i"); i.style.height = v + "%"; w.appendChild(i); }); })();
@@ -1073,7 +1349,7 @@ footer a:hover { color: var(--fg); }
   }
   function loop(now) {
     var dt = Math.min(.05, (now - lastNow) / 1000 || 0); lastNow = now;
-    if (playing && visible && current === "home" && !document.hidden) frame(dt);
+    if (playing && visible && current === "editor" && !document.hidden) frame(dt);
     requestAnimationFrame(loop);
   }
   try { three = initThree(); } catch (e) { three = null; }
