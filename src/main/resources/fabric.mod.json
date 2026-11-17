@@ -3,7 +3,7 @@
   "id": "killclipper",
   "version": "${version}",
   "name": "Kill Clipper",
-  "icon": "assets/medalkillclipper/icon.png",
+  "icon": "assets/killclipper/icon.png",
   "description": "Records your gameplay in a rolling buffer and saves an mp4 clip when you get a kill or a multi-kill streak.",
   "authors": [
     "Kill Clipper contributors"

@@ -76,6 +76,11 @@ java {
     withSourcesJar()
 }
 
+// Ship the license inside the mod jar.
+jar {
+    from('LICENSE')
+}
+
 tasks.named('sourcesJar') {
     exclude 'ffmpeg/**'
 }
