@@ -171,15 +171,23 @@ public final class HighlightReelScreen extends FlatScreen {
       this.addDrawableChild(FlatButton.of(Text.literal("Replays: " + (replays ? "On" : "Off")), b -> {
          replays = !replays;
          this.clearAndInit();
-      }).dimensions(x, y + 66, 100, 20).setting().build());
+      }).dimensions(x, y + 66, 72, 20).setting().build());
       this.addDrawableChild(FlatButton.of(Text.literal("Shape: " + (vertical ? "9:16" : "16:9")), b -> {
          vertical = !vertical;
          this.clearAndInit();
-      }).dimensions(x + 102, y + 66, 100, 20).setting().build());
+      }).dimensions(x + 74, y + 66, 72, 20).setting().build());
+      boolean text = KillClipperClient.instance().settings().reelText;
+      this.addDrawableChild(FlatButton.of(Text.literal("Text: " + (text ? "On" : "Off")), b -> {
+         ClipConfig config = KillClipperClient.instance().settings();
+         config.reelText = !config.reelText;
+         String error = KillClipperClient.instance().saveSettings(config);
+         status = error.isEmpty() ? "" : error;
+         this.clearAndInit();
+      }).dimensions(x + 148, y + 66, 64, 20).setting().build());
       this.addDrawableChild(FlatButton.of(Text.literal("Then: " + then.label), b -> {
          then = Then.values()[(then.ordinal() + 1) % Then.values().length];
          this.clearAndInit();
-      }).dimensions(x + 204, y + 66, 100, 20).setting().build());
+      }).dimensions(x + 214, y + 66, 90, 20).setting().build());
 
       // The picked clips: click one to select it, double-click to watch it.
       this.listTop = y + 102;
@@ -472,7 +480,8 @@ public final class HighlightReelScreen extends FlatScreen {
       HighlightReel.Popup intro = new HighlightReel.Popup(0.0, "HIGHLIGHTS", date + " - " + killText, ReelText.Style.TITLE);
       HighlightReel.Popup outro = new HighlightReel.Popup(0.0, "GG", bestStreak > 1 ? "BEST: " + HighlightReel.killName(bestStreak) : killText, ReelText.Style.TITLE);
       status = "Making the reel...";
-      List<HighlightReel.Overlay> overlays = HighlightReel.overlays(segments, t, intro, outro, width, height, job.work().resolve("text"));
+      // Popups and titles only when asked for; the default reel is just the clips and the music.
+      List<HighlightReel.Overlay> overlays = config.reelText ? HighlightReel.overlays(segments, t, intro, outro, width, height, job.work().resolve("text")) : List.of();
       double total = HighlightReel.length(segments, t);
       double musicStart = music != null && job.music() == Music.OWN ? grid.start() : 0.0;
       HighlightReel.Style style = new HighlightReel.Style(job.transition(), t, music, musicStart, 0.8, job.game(), width, height,
