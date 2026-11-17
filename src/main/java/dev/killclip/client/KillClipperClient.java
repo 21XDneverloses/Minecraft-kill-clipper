@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,8 @@ public final class KillClipperClient implements ClientModInitializer {
    private List<Pattern> decoratedPatterns = List.of();
    private final KillDeduplicator duplicates = new KillDeduplicator();
    private final HitTracker hits = new HitTracker();
+   /** The world hit players were last looked for in. */
+   private World checkedWorld;
    /** Deaths of players you hit, held a moment in case the chat gives the kill to someone else. */
    private final dev.killclip.core.PendingKills pendingDeaths = new dev.killclip.core.PendingKills(400L, 3000L);
    /** Recent chat lines and detection events, written to a file by /killclip report. */
@@ -71,6 +74,8 @@ public final class KillClipperClient implements ClientModInitializer {
    /** When you last typed a command that leaves the match (/lobby, /hub, /leave...). */
    private long leaveCommandMs = Long.MIN_VALUE / 2;
    private final Map<String, Long> lastHitLogged = new HashMap<>();
+   /** Kills counted in this world and when, so a win announced again in the lobby does not count twice. */
+   private final Map<String, Long> countedKills = new HashMap<>();
    private String lastClipFile = "";
    private long lastClipWallMs;
    /** Error notices already shown, so the same one is not repeated every few seconds. */
@@ -112,6 +117,7 @@ public final class KillClipperClient implements ClientModInitializer {
    private long clipEndLimitMs = Long.MAX_VALUE;
    /** A player hit this recently counts as killed if the match ends and you are sent away while alive. */
    private static final long MATCH_END_HIT_MS = 5000L;
+   private static final String MATCH_END = "match end";
    private static final double EXPLOSION_RANGE = 12.0;
    private static final boolean DEV_SPIN = Boolean.getBoolean("killclip.devSpin");
    private static final long SELF_TEST_MS = Long.getLong("killclip.selfTestClipSeconds", 0L) * 1000L;
@@ -282,7 +288,6 @@ public final class KillClipperClient implements ClientModInitializer {
             this.onWorldLeave();
             this.duplicates.clear();
             this.streaks.clear();
-            this.hits.clear();
             this.lastHits.clear();
             this.pendingDeaths.clear();
             this.worldIdentity = identity;
@@ -529,15 +534,24 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    private void onKillConfirmed(String victim, String source, String message, long receipt) {
+      if (this.hits.creditedBeforeLeaving(victim, receipt)) {
+         // A win announced in the lobby for a kill already counted when the match ended.
+         this.detection.event(System.currentTimeMillis(), "already counted when the match ended: " + victim + " (" + source + ")");
+         return;
+      }
+
+      // Place the kill where the player went down, not where it was announced (victory screen, lobby).
+      long at = source.equals(MATCH_END) ? this.hits.matchEndTime(victim, receipt) : this.hits.killTime(victim, receipt);
       this.hits.forget(victim);
       this.pendingDeaths.remove(victim);
       LastHit hit = this.lastHits.remove(victim);
       if (this.duplicates.accept(victim, receipt, this.config.duplicateWindowMs)) {
          this.detection.event(System.currentTimeMillis(), "KILL counted: " + victim + " (" + source + ")");
+         this.countedKills.put(victim, receipt);
          this.stats.kill(this.host());
-         this.noteMoment(receipt, victim, hit, message);
-         LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
-         this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
+         this.noteMoment(at, victim, hit, message);
+         LOGGER.debug("Confirmed kill of {} from {} at monotonic ms {} ({} ms before it was seen)", victim, source, at, receipt - at);
+         this.streaks.onKill(at).ifPresent(this::saveStreakClip);
       } else {
          this.detection.event(System.currentTimeMillis(), "same kill again, ignored: " + victim + " (" + source + ")");
       }
@@ -577,28 +591,39 @@ public final class KillClipperClient implements ClientModInitializer {
     * the match ended in your favour, so that player counts as killed even if their death was never shown.
     */
    private void onWorldLeave() {
-      if (!this.config.enabled || ReplayPlayer.playing()) {
-         return;
-      }
-
+      Set<String> credited = new HashSet<>();
       long now = nowMs();
-      // Deaths still waiting for a possible "killed by someone else" line happened before you left: count them.
-      for (Map.Entry<String, Long> death : this.pendingDeaths.drain()) {
-         this.onKillConfirmed(death.getKey(), "hit tracking", "", death.getValue());
-      }
-
       boolean leftOnPurpose = now - this.leaveCommandMs < 10000L;
-      if (this.config.trackHits && now - this.lastSelfDeathMs > this.config.hitWindowMs && !leftOnPurpose) {
-         for (String victim : this.hits.recent(now, MATCH_END_HIT_MS)) {
-            this.onKillConfirmed(victim, "match end (sent away while alive right after hitting them)");
+      if (this.config.enabled && !ReplayPlayer.playing()) {
+         // Deaths still waiting for a possible "killed by someone else" line happened before you left: count them.
+         for (Map.Entry<String, Long> death : this.pendingDeaths.drain()) {
+            this.onKillConfirmed(death.getKey(), "hit tracking", "", death.getValue());
          }
+
+         // Sent away while alive right after hitting someone: a win, unless you left on purpose (/lobby, /hub...).
+         if (this.config.trackHits && now - this.lastSelfDeathMs > this.config.hitWindowMs && !leftOnPurpose) {
+            for (String victim : this.hits.recent(now, MATCH_END_HIT_MS)) {
+               this.onKillConfirmed(victim, MATCH_END);
+               credited.add(victim);
+            }
+         }
+
+         this.streaks.finish().ifPresent(this::saveStreakClip);
       }
 
+      // Kills already counted in this world (by hit tracking or chat) must not count again if the lobby announces them.
+      this.countedKills.forEach((victim, time) -> {
+         if (now - time <= HitTracker.MAX_BACKDATE_MS) {
+            credited.add(victim);
+         }
+      });
+      this.countedKills.clear();
       if (!this.worldIdentity.isEmpty()) {
          this.detection.event(System.currentTimeMillis(), "left world " + this.worldIdentity + (leftOnPurpose ? " (after a leave command)" : ""));
       }
 
-      this.streaks.finish().ifPresent(this::saveStreakClip);
+      // Hits start over in the next world; their kill times stay a moment for a win announced there.
+      this.hits.leaveWorld(now, this.config.hitWindowMs, credited);
    }
 
    /** Counts players near an explosion you set off (crystal, anchor, bed) as hit by you. */
@@ -663,13 +688,36 @@ public final class KillClipperClient implements ClientModInitializer {
          return;
       }
 
+      long now = nowMs();
+      Set<String> present = new HashSet<>();
       for (PlayerEntity player : client.world.getPlayers()) {
          String name = player.getGameProfile().name();
-         if (player != client.player && recent.contains(name) && (player.isDead() || player.getHealth() <= 0.0F)) {
-            this.hits.forget(name);
-            if (this.pendingDeaths.add(name, nowMs())) {
-               this.detection.event(System.currentTimeMillis(), name + " died (health 0) after your hit");
+         if (player != client.player && recent.contains(name)) {
+            present.add(name);
+            if (player.isDead() || player.getHealth() <= 0.0F) {
+               this.hits.onGone(name, now);
+               // Held a moment: the chat may still give this kill to someone else.
+               if (this.pendingDeaths.add(name, now)) {
+                  this.detection.event(System.currentTimeMillis(), name + " died (health 0) after your hit");
+               }
+
+               this.hits.forget(name);
+            } else if (player.isSpectator()) {
+               // Duel servers often turn the loser into a spectator and only then announce the winner.
+               this.hits.onGone(name, now);
+            } else {
+               this.hits.onBack(name);
             }
+         }
+      }
+
+      // Only within the same world: on a move to another world everyone vanishes at once, which says nothing.
+      boolean sameWorld = client.world == this.checkedWorld;
+      this.checkedWorld = client.world;
+      for (String name : recent) {
+         if (sameWorld && !present.contains(name)) {
+            // Removed from the world: died, was sent away, or the match is over.
+            this.hits.onGone(name, now);
          }
       }
    }

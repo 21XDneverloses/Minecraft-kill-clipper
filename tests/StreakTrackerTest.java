@@ -27,6 +27,12 @@ public final class StreakTrackerTest {
       check(t3.finish().orElseThrow().kills() == 2, "finish saves a pending group right away (sent to lobby)");
       check(t3.finish().isEmpty() && t3.flush(60_000).isEmpty(), "a finished group is not saved twice");
 
+      StreakTracker t4 = new StreakTracker(10_000);
+      t4.onKill(5_000);
+      t4.onKill(4_200);
+      var early = t4.finish().orElseThrow();
+      check(early.firstKillMs() == 4_200 && early.lastKillMs() == 5_000, "a kill placed before the previous one keeps first and last in order");
+
       System.out.println("all StreakTracker checks passed");
    }
 
