@@ -57,7 +57,9 @@ public final class KillClipSettingsScreen extends FlatScreen {
          this.client.setScreen(this.parent);
          KillClipperClient.instance().testClip();
       }).dimensions(x + 152, y + 154, 148, 20).build());
-      this.addDrawableChild(FlatButton.of(Text.literal("Done"), button -> this.close()).dimensions(x, y + 176, 300, 20).primary().build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Run setup again"), button -> this.client.setScreen(new SetupScreen(this)))
+         .dimensions(x, y + 176, 148, 20).build());
+      this.addDrawableChild(FlatButton.of(Text.literal("Done"), button -> this.close()).dimensions(x + 152, y + 176, 148, 20).primary().build());
    }
 
    private void button(int x, int y, int width, Supplier<String> label, Consumer<ClipConfig> edit) {
@@ -89,7 +91,7 @@ public final class KillClipSettingsScreen extends FlatScreen {
 
    private static String encoderName(String encoder) {
       return switch (encoder) {
-         case "h264_nvenc" -> "NVIDIA";
+         case "h264_nvenc" -> "NVIDIA H.264";
          case "hevc_nvenc" -> "NVIDIA H.265";
          case "h264_amf" -> "AMD";
          case "h264_qsv" -> "Intel";
@@ -122,7 +124,18 @@ public final class KillClipSettingsScreen extends FlatScreen {
       int top = this.top();
       Ui.title(graphics, this.textRenderer, this.title, this.width / 2, Math.min(16, top - 22), alpha);
       int bottom = top + 204;
-      Ui.centered(graphics, this.textRenderer, "Clips save as mp4 in the killclips folder. Settings save automatically.", this.width / 2, bottom, Ui.fade(Ui.MUTED, alpha));
+      ClipRecorder.Health health = KillClipperClient.instance().recordingHealth();
+      if (health == null) {
+         Ui.centered(graphics, this.textRenderer, "Settings save automatically. Smoothness shows here while recording.", this.width / 2, bottom, Ui.fade(Ui.MUTED, alpha));
+      } else {
+         // Live smoothness: green when under 5% of frames repeat, amber with a tip otherwise.
+         String line = String.format("%s %.1f%% repeated, %.1f%% dropped  ·  %s %dp %d fps", health.smooth() ? "✓ Smooth:" : "Choppy:",
+            health.repeated(), health.dropped(), encoderName(health.encoder()), health.height(), health.fps());
+         Ui.centered(graphics, this.textRenderer, line, this.width / 2, bottom, Ui.fade(health.smooth() ? Ui.SUCCESS : Ui.WARN, alpha));
+         if (!health.advice().isEmpty() && this.error.isEmpty()) {
+            Ui.centered(graphics, this.textRenderer, health.advice(), this.width / 2, bottom + 12, Ui.fade(Ui.MUTED, alpha));
+         }
+      }
       if (!this.error.isEmpty()) {
          Ui.centered(graphics, this.textRenderer, this.error, this.width / 2, bottom + 12, Ui.fade(Ui.ERROR, alpha));
       }

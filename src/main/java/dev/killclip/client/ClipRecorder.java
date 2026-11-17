@@ -48,6 +48,16 @@ public final class ClipRecorder {
       .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
       .withVertexFormat(VertexFormats.EMPTY, VertexFormat.DrawMode.TRIANGLES)
       .build();
+   /** Shrinks the game picture to the clip size; see assets/killclipper/shaders/core/downscale.fsh. */
+   private static final RenderPipeline DOWNSCALE = RenderPipeline.builder()
+      .withLocation(Identifier.of("killclipper", "pipeline/downscale"))
+      .withVertexShader("core/screenquad")
+      .withFragmentShader(Identifier.of("killclipper", "core/downscale"))
+      .withSampler("InSampler")
+      .withDepthWrite(false)
+      .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+      .withVertexFormat(VertexFormats.EMPTY, VertexFormat.DrawMode.TRIANGLES)
+      .build();
    private final Path bufferRoot;
    private final Consumer<String> errors;
    private final CompletableFuture<String> bundledFfmpeg;
@@ -67,6 +77,10 @@ public final class ClipRecorder {
    private Boolean gpuConvert = Boolean.getBoolean("killclip.cpuConvert") ? Boolean.FALSE : null;
    private GpuTexture nv12Texture;
    private GpuTextureView nv12View;
+   private GpuTexture scaledTexture;
+   private GpuTextureView scaledView;
+   /** Whether the GPU downscale works here: null until checked. */
+   private Boolean gpuScale = Boolean.getBoolean("killclip.cpuScale") ? Boolean.FALSE : null;
 
    public ClipRecorder(Path bufferRoot, Path ffmpegCache, Consumer<String> errors) {
       this.bufferRoot = bufferRoot;
@@ -115,7 +129,7 @@ public final class ClipRecorder {
    private ReplayBuffer.Settings settingsFrom(ClipConfig config, String ffmpeg) {
       boolean gameAudio = "game".equals(config.audioSource) && GameAudioTap.active();
       String encoder = config.encoder.equals(this.failedEncoder) ? "libx264" : config.encoder;
-      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, encoder, config.effectiveBufferSeconds(), audioInput(config), gameAudio);
+      return new ReplayBuffer.Settings(ffmpeg, config.fps, config.resolution, config.quality, encoder, config.effectiveBufferSeconds(), audioInput(config), gameAudio, config.maxBitrateMbps);
    }
 
    /** FFmpeg input arguments for the chosen audio source. Only system audio is supported. */
@@ -138,6 +152,38 @@ public final class ClipRecorder {
    /** Percent of recorded frames that were repeats, or -1 when not recording. */
    public double repeatedPercent() {
       return this.buffer == null ? -1.0 : this.buffer.repeatedPercent();
+   }
+
+   /** Live recording health for the settings screen and /killclip status; null while not recording. */
+   public Health health() {
+      ReplayBuffer current = this.buffer;
+      if (current == null || current.framesWritten() < current.settings().fps()) {
+         return null;
+      }
+
+      return new Health(current.repeatedPercent(), current.slowPercent(), current.droppedPercent(), current.settings().encoder(),
+         current.width(), current.height(), current.settings().fps());
+   }
+
+   /**
+    * repeated = all frames shown twice in the clip; slow = because the game ran below the clip fps;
+    * dropped = because recording could not keep up (encoder or GPU copy busy).
+    */
+   public record Health(double repeated, double slow, double dropped, String encoder, int width, int height, int fps) {
+      public boolean smooth() {
+         return this.repeated < 5.0;
+      }
+
+      /** One line of advice, or empty when the clip is smooth. */
+      public String advice() {
+         if (this.dropped >= 3.0) {
+            return this.encoder.equals("libx264") ? "recording can't keep up: use a GPU encoder or a lower FPS" : "recording can't keep up: try a lower FPS or resolution";
+         } else if (this.slow >= 5.0) {
+            return "your game fps is below the clip fps: lower the clip FPS to match";
+         }
+
+         return "";
+      }
    }
 
    public boolean running() {
@@ -172,6 +218,11 @@ public final class ClipRecorder {
       // NV12 packs four luma bytes per texel and halves the chroma, so crop to a multiple of 4 by 2.
       int width = gpu ? framebuffer.textureWidth & ~3 : framebuffer.textureWidth;
       int height = gpu ? framebuffer.textureHeight & ~1 : framebuffer.textureHeight;
+      if (gpu && config.resolution > 0 && config.resolution < height && this.useGpuScale()) {
+         // Shrink on the GPU: a 1440p window then copies and encodes only 1080p worth of pixels.
+         width = (int)Math.round((double)framebuffer.textureWidth * config.resolution / framebuffer.textureHeight) & ~3;
+         height = config.resolution & ~1;
+      }
       if (width < 4 || height < 2) {
          return;
       }
@@ -247,7 +298,11 @@ public final class ClipRecorder {
             source = this.convertOnGpu(device, encoder, framebuffer, width, height);
          } catch (RuntimeException e) {
             KillClipperClient.LOGGER.warn("GPU colour conversion failed; converting on the CPU instead", e);
-            this.gpuConvert = Boolean.FALSE;
+            if (this.scaledTexture != null) {
+               this.gpuScale = Boolean.FALSE;
+            } else {
+               this.gpuConvert = Boolean.FALSE;
+            }
             readback.close();
             this.inFlight--;
             target.skip(due, null);
@@ -391,8 +446,43 @@ public final class ClipRecorder {
       return this.gpuConvert;
    }
 
-   /** Renders the framebuffer into the NV12 texture and returns it, ready to copy. */
+   private boolean useGpuScale() {
+      if (this.gpuScale == null) {
+         try {
+            this.gpuScale = RenderSystem.getDevice().precompilePipeline(DOWNSCALE).isValid();
+         } catch (RuntimeException e) {
+            KillClipperClient.LOGGER.warn("Could not compile the GPU downscale shader", e);
+            this.gpuScale = Boolean.FALSE;
+         }
+      }
+
+      return this.gpuScale;
+   }
+
+   /**
+    * Renders the framebuffer into the NV12 texture and returns it, ready to copy. When {@code width} x
+    * {@code height} is smaller than the framebuffer, the picture is first shrunk to that size on the GPU.
+    */
    private GpuTexture convertOnGpu(GpuDevice device, CommandEncoder encoder, Framebuffer framebuffer, int width, int height) {
+      GpuTextureView input = framebuffer.getColorAttachmentView();
+      if (height < (framebuffer.textureHeight & ~1)) {
+         if (this.scaledTexture == null || this.scaledTexture.getWidth(0) != width || this.scaledTexture.getHeight(0) != height) {
+            this.closeScaled();
+            this.scaledTexture = device.createTexture(() -> "KillClip scaled", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT, TextureFormat.RGBA8, width, height, 1, 1);
+            this.scaledView = device.createTextureView(this.scaledTexture);
+         }
+
+         try (RenderPass pass = encoder.createRenderPass(() -> "KillClip downscale", this.scaledView, OptionalInt.empty())) {
+            pass.setPipeline(DOWNSCALE);
+            pass.bindTexture("InSampler", input, RenderSystem.getSamplerCache().get(FilterMode.LINEAR));
+            pass.draw(0, 3);
+         }
+
+         input = this.scaledView;
+      } else {
+         this.closeScaled();
+      }
+
       int texWidth = width / 4;
       int texHeight = height * 3 / 2;
       if (this.nv12Texture == null || this.nv12Texture.getWidth(0) != texWidth || this.nv12Texture.getHeight(0) != texHeight) {
@@ -403,11 +493,23 @@ public final class ClipRecorder {
 
       try (RenderPass pass = encoder.createRenderPass(() -> "KillClip NV12", this.nv12View, OptionalInt.empty())) {
          pass.setPipeline(NV12);
-         pass.bindTexture("InSampler", framebuffer.getColorAttachmentView(), RenderSystem.getSamplerCache().get(FilterMode.NEAREST));
+         pass.bindTexture("InSampler", input, RenderSystem.getSamplerCache().get(FilterMode.NEAREST));
          pass.draw(0, 3);
       }
 
       return this.nv12Texture;
+   }
+
+   private void closeScaled() {
+      if (this.scaledView != null) {
+         this.scaledView.close();
+         this.scaledView = null;
+      }
+
+      if (this.scaledTexture != null) {
+         this.scaledTexture.close();
+         this.scaledTexture = null;
+      }
    }
 
    private void closeNv12() {
@@ -461,6 +563,7 @@ public final class ClipRecorder {
    public void stop() {
       this.closeReadbacks();
       this.closeNv12();
+      this.closeScaled();
       this.readbackSize = 0L;
       ReplayBuffer old = this.buffer;
       this.buffer = null;

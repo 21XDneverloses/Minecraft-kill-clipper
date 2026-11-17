@@ -40,6 +40,7 @@ The files in `tests/` are standalone and run with `javac` and `java`:
 - `StreakTrackerTest`, `HitTrackerTest`: streak grouping, hit tracking, and unpacking the bundled FFmpeg.
 - `HighlightReelTest`: rating and picking clips, beat detection, cutting on the beat, popups, and making reels with every transition, with and without music, replays and 9:16. Needs `ffmpeg` on PATH. Compile it with `src/main/java/dev/killclip/core/HighlightReel.java`, `ReelMusic.java`, `ReelText.java`, `BeatDetector.java`, `ClipMeta.java`, `VideoTools.java` and `ProcessPriority.java` (the last needs JNA on the classpath, or a stub).
 - `ReplayBufferTest`, `GameAudioTest`: record synthetic frames and audio through FFmpeg and save clips. Both need `ffmpeg` on PATH.
+- `EncoderProbeTest`: the first-run auto-tune picks, the bitrate ceiling, and a real encoder test. Compile it with `ReplayBuffer.java`, `EncoderProbe.java` and `ProcessPriority.java`; pass the FFmpeg to test.
 
 To check the whole pipeline in the game, launch with `-Dkillclip.selfTestClipSeconds=40`, which saves a test clip 40 seconds after startup. On a machine with no speakers, `-Dkillclip.audioWithoutSpeakers=true` runs game audio capture without playback.
 
