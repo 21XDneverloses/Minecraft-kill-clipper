@@ -60,6 +60,25 @@ public final class KillClipperClient implements ClientModInitializer {
    private List<Pattern> decoratedPatterns = List.of();
    private final KillDeduplicator duplicates = new KillDeduplicator();
    private final HitTracker hits = new HitTracker();
+   /** Deaths of players you hit, held a moment in case the chat gives the kill to someone else. */
+   private final dev.killclip.core.PendingKills pendingDeaths = new dev.killclip.core.PendingKills(400L, 3000L);
+   /** Recent chat lines and detection events, written to a file by /killclip report. */
+   private final dev.killclip.core.DetectionLog detection = new dev.killclip.core.DetectionLog(200, 200);
+   /** Nicknames shown in the player list, mapped to the real account names. */
+   private final Map<String, String> aliases = new HashMap<>();
+   /** Your own nickname in the player list, if the server shows one. */
+   private String ownAlias = "";
+   /** When you last typed a command that leaves the match (/lobby, /hub, /leave...). */
+   private long leaveCommandMs = Long.MIN_VALUE / 2;
+   private final Map<String, Long> lastHitLogged = new HashMap<>();
+   private String lastClipFile = "";
+   private long lastClipWallMs;
+   /** Error notices already shown, so the same one is not repeated every few seconds. */
+   private final Map<String, Long> warned = new HashMap<>();
+   private static final java.util.regex.Pattern LEAVE_COMMAND = java.util.regex.Pattern.compile(
+      "(?i)^(?:lobby|hub|l|leave|spawn|quit|forfeit|ff|surrender|server|kill|suicide|logout)\\b.*");
+   private net.minecraft.client.option.KeyBinding reportMissedKey;
+   private net.minecraft.client.option.KeyBinding reportWrongKey;
    /** How you last hit each player and from how far, for the highlight reel's kill details. */
    private final Map<String, LastHit> lastHits = new HashMap<>();
    /** Kills waiting for their clip, with their details. */
@@ -106,12 +125,33 @@ public final class KillClipperClient implements ClientModInitializer {
       return INSTANCE;
    }
 
+   /** Dev and screenshot runs skip the first-run setup unless -Dkillclip.devSetup is set. */
+   private static final boolean DEV_RUN = !Boolean.getBoolean("killclip.devSetup") && (!System.getProperty("killclip.devReplay", "").isEmpty()
+      || !System.getProperty("killclip.devEditor", "").isEmpty() || Boolean.getBoolean("killclip.devReel") || !System.getProperty("killclip.devConnect", "").isEmpty());
+   private boolean setupShown;
+   private static net.minecraft.client.option.KeyBinding clipKey;
+
+   /** The key that saves a clip right away, as shown in the game's language. */
+   static String clipKeyName() {
+      return clipKey == null ? "F8" : clipKey.getBoundKeyLocalizedText().getString();
+   }
+
    public void onInitializeClient() {
       INSTANCE = this;
+      // One key category for all of the mod's keys; creating it twice would register it twice.
+      net.minecraft.client.option.KeyBinding.Category keys = net.minecraft.client.option.KeyBinding.Category.create(net.minecraft.util.Identifier.of("killclipper", "main"));
+      clipKey = net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding(new net.minecraft.client.option.KeyBinding(
+         "key.killclipper.clip", org.lwjgl.glfw.GLFW.GLFW_KEY_F8, keys));
       Path clipDir = FabricLoader.getInstance().getGameDir().resolve("killclips");
       ReplayCapture.init(clipDir.resolve(".replay"));
       net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
          if (screen instanceof net.minecraft.client.gui.screen.TitleScreen) {
+            if (!this.setupShown && !this.config.setupDone && this.started && !DEV_RUN) {
+               // First launch: the welcome setup, once, over the title screen.
+               this.setupShown = true;
+               client.send(() -> client.setScreen(new SetupScreen(screen)));
+            }
+
             net.fabricmc.fabric.api.client.screen.v1.Screens.getButtons(screen).add(
                net.minecraft.client.gui.widget.ButtonWidget.builder(Text.literal("Clip Editor"), b -> client.setScreen(new ClipLibraryScreen(screen)))
                   .dimensions(4, 4, 80, 20).build());
@@ -119,7 +159,7 @@ public final class KillClipperClient implements ClientModInitializer {
       });
       this.recorder = new ClipRecorder(clipDir.resolve(".buffer"), clipDir.resolve(".ffmpeg"), message -> {
          LOGGER.warn("Recorder: {}", message);
-         MinecraftClient.getInstance().execute(() -> tell("Recorder: " + message));
+         MinecraftClient.getInstance().execute(() -> warn("Recorder: " + message));
       });
 
       try {
@@ -139,10 +179,11 @@ public final class KillClipperClient implements ClientModInitializer {
          this.reset();
          this.refreshVanillaPatterns();
          if (ReplayPlayer.playing() && !ReplayPlayer.active().exporting()) {
-            tell("Replay: E opens the editor (H there shows all keys). Esc → Disconnect to leave.");
-         } else {
-            tell("Loaded. " + this.recordingSummary() + ". Use /killclip status, /killclip test or /killclip menu.");
+            // A short hint above the hotbar instead of a chat line.
+            client.inGameHud.setOverlayMessage(Text.literal("Replay: E opens the editor, Esc → Disconnect leaves"), false);
          }
+
+         LOGGER.info("Joined {}: {}", this.host(), this.recordingSummary());
       });
       ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
          this.finishCapture();
@@ -154,6 +195,17 @@ public final class KillClipperClient implements ClientModInitializer {
          this.finishCapture();
          this.recorder.stop();
       });
+      net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents.COMMAND.register(command -> {
+         if (LEAVE_COMMAND.matcher(command.strip()).matches()) {
+            // Leaving a fight on purpose is not a win: hits just before it must not count as kills.
+            this.leaveCommandMs = nowMs();
+            this.detection.event(System.currentTimeMillis(), "you typed /" + command.split(" ")[0] + " (leaving: recent hits will not count as a win)");
+         }
+      });
+      this.reportMissedKey = net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding(
+         new net.minecraft.client.option.KeyBinding("key.killclipper.report_missed", net.minecraft.client.util.InputUtil.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_UNKNOWN, keys));
+      this.reportWrongKey = net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding(
+         new net.minecraft.client.option.KeyBinding("key.killclipper.report_wrong", net.minecraft.client.util.InputUtil.Type.KEYSYM, org.lwjgl.glfw.GLFW.GLFW_KEY_UNKNOWN, keys));
       AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
          if (world.isClient() && entity instanceof PlayerEntity victim && victim != player) {
             this.hits.onHit(victim.getGameProfile().name(), nowMs());
@@ -182,6 +234,12 @@ public final class KillClipperClient implements ClientModInitializer {
             this.finishCapture();
          }
 
+         while (clipKey.wasPressed()) {
+            if (client.world != null && !ReplayPlayer.playing()) {
+               this.clipNow();
+            }
+         }
+
          this.trackProjectileHits(client);
          ReplayCapture.recordSelf(client);
          if (ReplayPlayer.active() != null) {
@@ -205,6 +263,18 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          this.checkHitPlayers(client);
+         for (Map.Entry<String, Long> death : this.pendingDeaths.due(nowMs())) {
+            this.onKillConfirmed(death.getKey(), "hit tracking", "", death.getValue());
+         }
+
+         while (this.reportMissedKey.wasPressed()) {
+            this.report("missed");
+         }
+
+         while (this.reportWrongKey.wasPressed()) {
+            this.report("wrong");
+         }
+
          this.runSelfTest();
          this.streaks.flush(nowMs()).ifPresent(this::saveStreakClip);
          String identity = client.world == null ? "" : client.world.getRegistryKey().toString();
@@ -214,6 +284,7 @@ public final class KillClipperClient implements ClientModInitializer {
             this.streaks.clear();
             this.hits.clear();
             this.lastHits.clear();
+            this.pendingDeaths.clear();
             this.worldIdentity = identity;
          }
 
@@ -246,6 +317,10 @@ public final class KillClipperClient implements ClientModInitializer {
             this.openClipsFolder();
             return 1;
          }));
+         root.then(ClientCommandManager.literal("report")
+            .executes(context -> this.report("missed"))
+            .then(ClientCommandManager.literal("missed").executes(context -> this.report("missed")))
+            .then(ClientCommandManager.literal("wrong").executes(context -> this.report("wrong"))));
          root.then(ClientCommandManager.literal("learn").executes(context -> {
             if (this.captureUntil != 0L) {
                this.finishCapture();
@@ -295,61 +370,176 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       MinecraftClient client = MinecraftClient.getInstance();
+      String text = message.getString();
+      if (text.startsWith("[KillClip]")) {
+         // The mod's own replies to commands.
+         return;
+      }
+
       if (this.captureUntil != 0L && this.captured.size() < 100) {
-         String text = message.getString();
          this.captured.add(Instant.now() + " | " + translationKeys(message) + " | " + text.substring(0, Math.min(text.length(), 2048)).replace('\n', ' ').replace('\r', ' '));
       }
 
-      if (this.config.enabled && client.player != null && client.getNetworkHandler() != null && this.allowed()) {
-         String local = client.player.getGameProfile().name();
-         String plain = message.getString();
-         if (plain.contains(local)) {
-            Set<String> online = this.recentPlayers.keySet();
-            Optional<KillRules.Kill> kill = this.findTranslation(message, local, online);
-            this.refreshVanillaPatterns();
-            if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.decoratedPatterns, local, online);
-            }
+      String decision;
+      try {
+         decision = this.detect(message, client);
+      } catch (RuntimeException e) {
+         // A bad rule must never break chat.
+         LOGGER.warn("Kill detection failed on a chat line", e);
+         decision = "error: " + e;
+      }
 
-            if (kill.isEmpty()) {
-               kill = KillRules.fromMessage(message.getString(), this.serverRules(this.host()), local, online);
-            }
+      this.detection.line(System.currentTimeMillis(), translationKeys(message), text, decision);
+   }
 
-            if (kill.isEmpty()) {
-               // Rules from every known server, then common kill-message shapes, on any server.
-               kill = KillRules.fromMessage(message.getString(), this.allServerRules, local, online);
-            }
+   /** Reads one server chat line for kills and your own deaths, and says what it decided (for reports). */
+   private String detect(Text message, MinecraftClient client) {
+      if (!this.config.enabled) {
+         return "clipping off";
+      }
 
-            if (kill.isEmpty()) {
-               kill = KillRules.searchMessage(message.getString(), UNIVERSAL_RULES, local, online);
-            }
+      if (client.player == null || client.getNetworkHandler() == null) {
+         return "not in a world";
+      }
 
-            if (kill.isEmpty() && this.config.guessKills) {
-               kill = KillRules.guess(message.getString(), local, online);
-            }
+      if (!this.allowed()) {
+         return "server not in the list";
+      }
 
-            kill.ifPresent(event -> this.onKillConfirmed(event.victim(), "chat", plain));
-            if (kill.isEmpty() && this.isOwnDeathLine(message, local, online)) {
-               this.onOwnDeath("chat");
-            }
+      String local = client.player.getGameProfile().name();
+      Set<String> online = this.recentPlayers.keySet();
+      String plain = KillRules.aliasAsName(message.getString(), this.ownAlias, local);
+      String otherCredit = this.creditOthers(message, plain, local, online);
+      if (!KillRules.mentionsYou(plain, local)) {
+         return otherCredit.isEmpty() ? "-" : otherCredit;
+      }
+
+      String named = KillRules.youAsName(plain, local, online);
+      String rule = "vanilla death message";
+      Optional<KillRules.Kill> kill = this.findTranslation(message, local, online);
+      this.refreshVanillaPatterns();
+      if (kill.isEmpty()) {
+         kill = KillRules.fromMessage(named, this.decoratedPatterns, local, online);
+      }
+
+      if (kill.isEmpty()) {
+         rule = "this server's rules";
+         kill = KillRules.fromMessage(named, this.serverRules(this.host()), local, online);
+      }
+
+      if (kill.isEmpty()) {
+         // Rules from every known server, then common kill-message shapes, on any server.
+         rule = "known server rules";
+         kill = KillRules.fromMessage(named, this.allServerRules, local, online);
+      }
+
+      if (kill.isEmpty()) {
+         rule = "common kill wording";
+         kill = KillRules.searchMessage(named, UNIVERSAL_RULES, local, online);
+      }
+
+      if (kill.isEmpty() && this.config.guessKills) {
+         rule = "kill-word guess";
+         kill = KillRules.guess(plain, local, online);
+      }
+
+      if (kill.isPresent()) {
+         String victim = this.canonical(kill.get().victim());
+         this.onKillConfirmed(victim, "chat, " + rule, plain, nowMs());
+         return "KILL of " + victim + " (" + rule + ")";
+      }
+
+      if (this.isOwnDeathLine(message, local, online)) {
+         this.onOwnDeath("chat");
+         return "your death";
+      }
+
+      return otherCredit.isEmpty() ? "names you, not a kill" : otherCredit;
+   }
+
+   /**
+    * When the chat gives the kill on a player you hit to someone else ("Bob was slain by Carl"), that death
+    * is not yours: drop it from hit tracking. Only checked while you have recent hits, to keep chat cheap.
+    */
+   private String creditOthers(Text message, String plain, String local, Set<String> online) {
+      if (!this.config.trackHits || this.pendingDeaths.isEmpty() && this.hits.recent(nowMs(), this.config.hitWindowMs).isEmpty()) {
+         return "";
+      }
+
+      Optional<KillRules.Kill> credit = this.findAnyTranslation(message, online);
+      if (credit.isEmpty()) {
+         List<Pattern> exact = new ArrayList<>(this.decoratedPatterns);
+         exact.addAll(this.allServerRules);
+         credit = KillRules.anyKill(KillRules.youAsName(plain, local, online), exact, UNIVERSAL_RULES, online);
+      }
+
+      if (credit.isEmpty() || credit.get().killer().equalsIgnoreCase(local) || this.canonical(credit.get().killer()).equals(local)) {
+         return "";
+      }
+
+      String victim = this.canonical(credit.get().victim());
+      boolean dropped = this.pendingDeaths.creditedToOther(victim, nowMs());
+      this.hits.forget(victim);
+      this.lastHits.remove(victim);
+      this.detection.event(System.currentTimeMillis(), victim + " was killed by " + credit.get().killer() + (dropped ? ": your hit does not count" : ""));
+      return "kill by another player (" + credit.get().killer() + " on " + victim + ")";
+   }
+
+   private Optional<KillRules.Kill> findAnyTranslation(Text text, Set<String> online) {
+      if (text.getContent() instanceof TranslatableTextContent translation) {
+         List<String> args = Arrays.stream(translation.getArgs()).map(arg -> arg instanceof Text component ? component.getString() : String.valueOf(arg)).toList();
+         Optional<KillRules.Kill> result = KillRules.anyKillFromTranslation(translation.getKey(), args, online);
+         if (result.isPresent()) {
+            return result;
+         }
+      }
+
+      for (Text sibling : text.getSiblings()) {
+         Optional<KillRules.Kill> result = this.findAnyTranslation(sibling, online);
+         if (result.isPresent()) {
+            return result;
+         }
+      }
+
+      return Optional.empty();
+   }
+
+   /** The account name behind a nickname from the player list (or the name itself). */
+   private String canonical(String name) {
+      return this.aliases.getOrDefault(name, name);
+   }
+
+   /** Called by the death-status mixin when another player dies in front of you. */
+   public void onPlayerDeathStatus(String name) {
+      if (!this.config.enabled || !this.config.trackHits || !this.allowed()) {
+         return;
+      }
+
+      if (this.hits.recent(nowMs(), this.config.hitWindowMs).contains(name)) {
+         this.hits.forget(name);
+         if (this.pendingDeaths.add(name, nowMs())) {
+            this.detection.event(System.currentTimeMillis(), name + " died (death status) after your hit");
          }
       }
    }
 
    /** Every kill source (chat message or a death of someone you hit) ends up here; duplicates are dropped. */
    private void onKillConfirmed(String victim, String source) {
-      this.onKillConfirmed(victim, source, "");
+      this.onKillConfirmed(victim, source, "", nowMs());
    }
 
-   private void onKillConfirmed(String victim, String source, String message) {
-      long receipt = nowMs();
+   private void onKillConfirmed(String victim, String source, String message, long receipt) {
       this.hits.forget(victim);
+      this.pendingDeaths.remove(victim);
       LastHit hit = this.lastHits.remove(victim);
       if (this.duplicates.accept(victim, receipt, this.config.duplicateWindowMs)) {
+         this.detection.event(System.currentTimeMillis(), "KILL counted: " + victim + " (" + source + ")");
          this.stats.kill(this.host());
          this.noteMoment(receipt, victim, hit, message);
          LOGGER.debug("Confirmed kill of {} from {}; grouping into streak at monotonic ms {}", victim, source, receipt);
          this.streaks.onKill(receipt).ifPresent(this::saveStreakClip);
+      } else {
+         this.detection.event(System.currentTimeMillis(), "same kill again, ignored: " + victim + " (" + source + ")");
       }
    }
 
@@ -392,10 +582,20 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       long now = nowMs();
-      if (this.config.trackHits && now - this.lastSelfDeathMs > this.config.hitWindowMs) {
+      // Deaths still waiting for a possible "killed by someone else" line happened before you left: count them.
+      for (Map.Entry<String, Long> death : this.pendingDeaths.drain()) {
+         this.onKillConfirmed(death.getKey(), "hit tracking", "", death.getValue());
+      }
+
+      boolean leftOnPurpose = now - this.leaveCommandMs < 10000L;
+      if (this.config.trackHits && now - this.lastSelfDeathMs > this.config.hitWindowMs && !leftOnPurpose) {
          for (String victim : this.hits.recent(now, MATCH_END_HIT_MS)) {
-            this.onKillConfirmed(victim, "match end");
+            this.onKillConfirmed(victim, "match end (sent away while alive right after hitting them)");
          }
+      }
+
+      if (!this.worldIdentity.isEmpty()) {
+         this.detection.event(System.currentTimeMillis(), "left world " + this.worldIdentity + (leftOnPurpose ? " (after a leave command)" : ""));
       }
 
       this.streaks.finish().ifPresent(this::saveStreakClip);
@@ -414,6 +614,17 @@ public final class KillClipperClient implements ClientModInitializer {
    private void noteHit(String victim, dev.killclip.core.ClipMeta.Cause cause, float distance) {
       if (this.lastHits.size() > 200) {
          this.lastHits.clear();
+      }
+
+      long now = nowMs();
+      Long logged = this.lastHitLogged.get(victim);
+      if (logged == null || now - logged > 2000L) {
+         if (this.lastHitLogged.size() > 200) {
+            this.lastHitLogged.clear();
+         }
+
+         this.lastHitLogged.put(victim, now);
+         this.detection.event(System.currentTimeMillis(), String.format("hit %s (%s, %.1f blocks)", victim, cause.name().toLowerCase(), distance));
       }
 
       this.lastHits.put(victim, new LastHit(cause, distance));
@@ -455,7 +666,10 @@ public final class KillClipperClient implements ClientModInitializer {
       for (PlayerEntity player : client.world.getPlayers()) {
          String name = player.getGameProfile().name();
          if (player != client.player && recent.contains(name) && (player.isDead() || player.getHealth() <= 0.0F)) {
-            this.onKillConfirmed(name, "hit tracking");
+            this.hits.forget(name);
+            if (this.pendingDeaths.add(name, nowMs())) {
+               this.detection.event(System.currentTimeMillis(), name + " died (health 0) after your hit");
+            }
          }
       }
    }
@@ -492,6 +706,7 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       LOGGER.debug("Own death from {}", source);
+      this.detection.event(System.currentTimeMillis(), "you died (" + source + ")");
       this.ownDeathMs = now;
       this.clipEndLimitMs = now - 200L;
       try {
@@ -596,6 +811,8 @@ public final class KillClipperClient implements ClientModInitializer {
       long videoLead = this.recorder.videoLeadMs(fromMs);
       this.recorder.save(fromMs, toMs, label, this.config.clipsDir(), this.config.fileFormat, file -> {
          this.clipsSaved++;
+         this.lastClipFile = file;
+         this.lastClipWallMs = System.currentTimeMillis();
          if (manual || this.config.feedback) {
             notify("✓ " + title + " clip saved", Formatting.GREEN);
          }
@@ -609,8 +826,7 @@ public final class KillClipperClient implements ClientModInitializer {
             replay.release();
          }
 
-         notify("✗ Clip failed: " + error, Formatting.RED);
-         LOGGER.warn("Clip failed: {}", error);
+         warn("Clip failed: " + error);
       });
    }
 
@@ -731,6 +947,11 @@ public final class KillClipperClient implements ClientModInitializer {
       if (SELF_TEST_MS > 0L && !this.selfTestDone && nowMs() - this.launchMs >= SELF_TEST_MS) {
          this.selfTestDone = true;
          long now = nowMs();
+         if (Boolean.getBoolean("killclip.devOpenSettings")) {
+            // Dev check: show the settings with the live smoothness line.
+            mc.setScreen(new KillClipSettingsScreen(mc.currentScreen));
+         }
+
          this.recorder.save(now - 10000L, now, "selftest", this.config.clipsDir(), this.config.fileFormat,
             file -> LOGGER.info("KILLCLIP_SELFTEST_CLIP saved {}", file), error -> LOGGER.error("KILLCLIP_SELFTEST_CLIP failed: {}", error));
          ReplayCapture.save(now - 10000L, now, this.config.clipsDir().resolve("selftest.kcreplay")).whenComplete((path, error) -> {
@@ -848,6 +1069,42 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    /** Saves the last 10 seconds right now. */
+   /** The clip key: saves the time before the kill setting (at least 10 s) up to now. */
+   void clipNow() {
+      long now = nowMs();
+      this.saveClip(now - Math.max(10000L, this.config.preRollMs), now, now, "clip", "Manual", true);
+   }
+
+   /** Tests every video encoder with the bundled FFmpeg, off the render thread. */
+   CompletableFuture<java.util.Map<String, Boolean>> testEncoders() {
+      return CompletableFuture.supplyAsync(() -> {
+         long deadline = System.currentTimeMillis() + 60000L;
+         String ffmpeg = this.ffmpeg();
+         while (ffmpeg == null && System.currentTimeMillis() < deadline) {
+            try {
+               Thread.sleep(200L);
+            } catch (InterruptedException e) {
+               break;
+            }
+
+            ffmpeg = this.ffmpeg();
+         }
+
+         if (ffmpeg == null) {
+            return java.util.Map.of();
+         }
+
+         java.util.Map<String, Boolean> result = dev.killclip.core.EncoderProbe.testAll(ffmpeg);
+         LOGGER.info("Encoder test: {}", result);
+         return result;
+      });
+   }
+
+   /** How smooth the live recording is, or null while it is not recording yet. */
+   ClipRecorder.Health recordingHealth() {
+      return this.recorder.health();
+   }
+
    public void testClip() {
       long now = nowMs();
       this.saveClip(now - 10000L, now, now, "test", "Test", true);
@@ -907,10 +1164,12 @@ public final class KillClipperClient implements ClientModInitializer {
    private int status() {
       tell("Automatic: " + (this.config.enabled ? "ON" : "OFF") + " | " + this.recordingSummary() + (this.recorder.running() ? "" : " (not running yet)")
          + " | server: " + this.host() + " | clips saved: " + this.clipsSaved);
-      double repeated = this.recorder.repeatedPercent();
-      if (repeated >= 0.0) {
-         tell(String.format("Smoothness: %.1f%% of frames repeated, game at %d fps%s", repeated, MinecraftClient.getInstance().getCurrentFps(),
-            repeated > 10.0 ? " (choppy: try a lower FPS or resolution)" : ""));
+      ClipRecorder.Health health = this.recorder.health();
+      if (health != null) {
+         String advice = health.advice();
+         tell(String.format("Smoothness: %.1f%% of frames repeated (%.1f%% game too slow, %.1f%% dropped by the recorder), game at %d fps | %s %dx%d %d fps%s",
+            health.repeated(), health.slow(), health.dropped(), MinecraftClient.getInstance().getCurrentFps(),
+            SetupScreen.encoderName(health.encoder()), health.width(), health.height(), health.fps(), advice.isEmpty() ? "" : " | " + advice));
       }
       tell("Streak: " + this.config.streakMinKills + "+ kills within " + this.config.streakGapMs / 1000.0 + " s | clips folder: " + this.config.clipsDir().toAbsolutePath());
       return 1;
@@ -947,9 +1206,21 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       if (client.getNetworkHandler() != null) {
+         String self = client.player == null ? "" : client.player.getGameProfile().name();
          client.getNetworkHandler().getPlayerList().forEach(info -> {
-            if (this.recentPlayers.size() < 4096 || this.recentPlayers.containsKey(info.getProfile().name())) {
-               this.recentPlayers.put(info.getProfile().name(), now);
+            String name = info.getProfile().name();
+            if (this.recentPlayers.size() < 4096 || this.recentPlayers.containsKey(name)) {
+               this.recentPlayers.put(name, now);
+               // Servers with nicknames print the nickname in kill messages: learn it from the player list.
+               String nick = info.getDisplayName() == null ? "" : nickname(info.getDisplayName().getString());
+               if (nick.length() >= 3 && !nick.equals(name) && this.aliases.size() < 4096) {
+                  if (name.equals(self)) {
+                     this.ownAlias = nick;
+                  } else if (!this.recentPlayers.containsKey(nick) || this.aliases.containsKey(nick)) {
+                     this.aliases.put(nick, name);
+                     this.recentPlayers.put(nick, now);
+                  }
+               }
             }
          });
       }
@@ -961,7 +1232,10 @@ public final class KillClipperClient implements ClientModInitializer {
       this.streaks.clear();
       this.hits.clear();
       this.lastHits.clear();
+      this.pendingDeaths.clear();
       this.recentPlayers.clear();
+      this.aliases.clear();
+      this.ownAlias = "";
       this.nextPlayerRefresh = 0L;
       this.worldIdentity = "";
    }
@@ -987,6 +1261,90 @@ public final class KillClipperClient implements ClientModInitializer {
             }
          });
       }
+   }
+
+   /** The last name-like word of a player-list display name ("[VIP] Bob ⚔ 12" gives "Bob"). */
+   private static String nickname(String display) {
+      java.util.regex.Matcher words = java.util.regex.Pattern.compile("(?<![A-Za-z0-9_])[A-Za-z0-9_]{3,16}(?![A-Za-z0-9_])").matcher(KillRules.clean(display));
+      String last = "";
+      while (words.find()) {
+         if (!words.group().chars().allMatch(Character::isDigit)) {
+            last = words.group();
+         }
+      }
+
+      return last;
+   }
+
+   /**
+    * A problem the player should know about, shown quietly above the hotbar (never in chat) and at most once
+    * every 5 minutes for the same message. Always written to the log.
+    */
+   private void warn(String message) {
+      LOGGER.warn("{}", message);
+      long now = nowMs();
+      Long shown = this.warned.get(message);
+      if (shown != null && now - shown < 300000L) {
+         return;
+      }
+
+      if (this.warned.size() > 50) {
+         this.warned.clear();
+      }
+
+      this.warned.put(message, now);
+      notify("✗ " + message, Formatting.RED);
+   }
+
+   /**
+    * Saves what detection saw (recent chat with the decision for each line, hits, deaths, kills) to a file, so
+    * a missed or wrong kill can be turned into a rule fix. A missed kill also gets its clip saved now.
+    */
+   private int report(String kind) {
+      MinecraftClient client = MinecraftClient.getInstance();
+      long wall = System.currentTimeMillis();
+      long now = nowMs();
+      if ("missed".equals(kind) && this.config.recording && client.player != null) {
+         this.saveClip(now - Math.max(this.config.preRollMs, 15000L), now, now, "kill", "Missed kill", true);
+      }
+
+      Map<String, String> details = new java.util.LinkedHashMap<>();
+      details.put("Mod version", FabricLoader.getInstance().getModContainer("killclipper").map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("?"));
+      details.put("Server", this.host());
+      details.put("Your name", client.player == null ? "(not in a world)" : client.player.getGameProfile().name());
+      details.put("Your nickname in the player list", this.ownAlias.isEmpty() ? "(none)" : this.ownAlias);
+      details.put("Players known online", String.valueOf(this.recentPlayers.size()));
+      details.put("Nicknames known", String.valueOf(this.aliases.size()));
+      details.put("Clipping on", String.valueOf(this.config.enabled));
+      details.put("Allowed on this server", String.valueOf(this.allowed()));
+      details.put("Guess kills", String.valueOf(this.config.guessKills));
+      details.put("Hit tracking", this.config.trackHits + " (window " + this.config.hitWindowMs + " ms)");
+      details.put("Recent hits", this.hits.recent(now, this.config.hitWindowMs).toString());
+      details.put("Deaths waiting", this.pendingDeaths.snapshot().keySet().toString());
+      details.put("Rules for this server", String.valueOf(this.serverRules(this.host()).size()));
+      details.put("Last clip saved", this.lastClipFile.isEmpty() ? "(none this session)" : this.lastClipFile + " (" + (wall - this.lastClipWallMs) / 1000L + " s ago)");
+      details.put("Last own death", this.ownDeathMs < 0 ? "(none)" : (now - this.ownDeathMs) / 1000L + " s ago");
+      List<String> lines = this.detection.report(kind, wall, details);
+      Path dir = FabricLoader.getInstance().getGameDir().resolve("killclip-reports");
+      Path file = dir.resolve("report-" + kind + "-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".txt");
+      CompletableFuture.runAsync(() -> {
+         try {
+            Files.createDirectories(dir);
+            Files.write(file, lines);
+            client.execute(() -> {
+               if (client.player != null) {
+                  client.player.sendMessage(Text.literal("[KillClip] Report saved" + ("missed".equals(kind) ? " and the last 15 s clipped" : "") + ": ")
+                     .append(Text.literal(file.getFileName().toString()).formatted(Formatting.UNDERLINE)
+                        .styled(style -> style.withClickEvent(new net.minecraft.text.ClickEvent.OpenFile(dir))))
+                     .append(Text.literal(". Send it so detection can be fixed (it holds recent chat, so read it first).")), false);
+               }
+            });
+         } catch (Exception e) {
+            LOGGER.error("Could not save the detection report", e);
+            client.execute(() -> this.warn("Report not saved: " + e.getMessage()));
+         }
+      });
+      return 1;
    }
 
    private static void tell(String message) {

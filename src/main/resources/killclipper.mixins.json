@@ -13,7 +13,8 @@
     "ConnectScreenMixin",
     "HandSwingMixin",
     "HeldItemRendererMixin",
-    "InGameHudMixin"
+    "InGameHudMixin",
+    "PlayerDeathStatusMixin"
   ],
   "injectors": {
     "defaultRequire": 1

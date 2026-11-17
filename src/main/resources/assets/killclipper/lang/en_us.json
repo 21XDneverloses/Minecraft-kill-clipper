@@ -1,0 +1,6 @@
+{
+  "key.category.killclipper.main": "Kill Clipper",
+  "key.killclipper.clip": "Save a clip now",
+  "key.killclipper.report_missed": "Report a missed kill (saves a clip)",
+  "key.killclipper.report_wrong": "Report a wrong kill clip"
+}
