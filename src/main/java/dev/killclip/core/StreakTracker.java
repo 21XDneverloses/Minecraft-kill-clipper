@@ -16,10 +16,14 @@ public final class StreakTracker {
       Optional<Streak> finished = this.flush(nowMs);
       if (this.kills == 0) {
          this.firstKillMs = nowMs;
+         this.lastKillMs = nowMs;
       }
 
+      // A kill can be placed a little before the one announced first (when the player went down), so keep the
+      // group's first and last kill in order.
       this.kills++;
-      this.lastKillMs = nowMs;
+      this.firstKillMs = Math.min(this.firstKillMs, nowMs);
+      this.lastKillMs = Math.max(this.lastKillMs, nowMs);
       return finished;
    }
 
