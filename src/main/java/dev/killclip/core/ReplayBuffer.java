@@ -31,7 +31,11 @@ public final class ReplayBuffer implements AutoCloseable {
     * audioInput holds FFmpeg input arguments for a system audio device (empty = none).
     * gameAudio records PCM pushed through {@link #pushAudio} instead.
     */
-   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput, boolean gameAudio) {
+   public record Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput, boolean gameAudio, int maxMbps) {
+      public Settings(String ffmpegPath, int fps, int outputHeight, int quality, String encoder, int bufferSeconds, List<String> audioInput, boolean gameAudio) {
+         this(ffmpegPath, fps, outputHeight, quality, encoder, bufferSeconds, audioInput, gameAudio, 0);
+      }
+
       boolean hasAudio() {
          return this.gameAudio || !this.audioInput.isEmpty();
       }
@@ -70,7 +74,8 @@ public final class ReplayBuffer implements AutoCloseable {
    private final long startMs;
    private final Process ffmpeg;
    private final ServerSocket videoServer;
-   private volatile Socket videoSocket;
+   private final java.nio.channels.ServerSocketChannel videoServerChannel;
+   private volatile java.nio.channels.SocketChannel videoSocket;
    private final BlockingQueue<Frame> queue = new ArrayBlockingQueue<>(QUEUE_FRAMES);
    private final BlockingQueue<byte[]> free = new ArrayBlockingQueue<>(QUEUE_FRAMES + 2);
    private final AtomicInteger carry = new AtomicInteger();
@@ -87,6 +92,10 @@ public final class ReplayBuffer implements AutoCloseable {
    private long lastClaimMs;
    private volatile long framesWritten;
    private volatile long framesRepeated;
+   /** Frames repeated because the game rendered slower than the clip frame rate. */
+   private volatile long framesSlow;
+   /** Frames left out because the encoder or the GPU copy was still busy. */
+   private final AtomicLong framesDropped = new AtomicLong();
    private volatile String failure;
    private volatile boolean closed;
 
@@ -114,8 +123,10 @@ public final class ReplayBuffer implements AutoCloseable {
       }
 
       // Frames go to FFmpeg over a loopback socket: much faster than a process pipe on Windows.
-      this.videoServer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
-      this.videoServer.setSoTimeout(15000);
+      // A channel writes straight from the mapped GPU memory: no copy into a Java array for every frame.
+      this.videoServerChannel = java.nio.channels.ServerSocketChannel.open();
+      this.videoServerChannel.bind(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 1);
+      this.videoServer = this.videoServerChannel.socket();
       ProcessBuilder builder = new ProcessBuilder(recordCommand(settings, width, height, nv12, segmentDir, this.videoServer.getLocalPort(), audioPort));
       builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
       builder.redirectError(segmentDir.resolve("ffmpeg.log").toFile());
@@ -164,6 +175,11 @@ public final class ReplayBuffer implements AutoCloseable {
          cmd.addAll(List.of("-filter_threads", String.valueOf(threads), "-vf", "vflip," + scale + ",format=yuv420p"));
       }
       cmd.addAll(codecArgs(s.encoder(), s.quality()));
+      int capKbps = bitrateCapKbps(s.encoder(), outWidth, outHeight, s.fps(), s.maxMbps());
+      if (capKbps > 0 && !s.encoder().equals("h264_amf") && !s.encoder().equals("h264_qsv")) {
+         // Quality-based encoding with a ceiling: calm moments stay small, fast fights never balloon the file.
+         cmd.addAll(List.of("-maxrate", capKbps + "k", "-bufsize", capKbps * 2 + "k"));
+      }
       if (s.hasAudio()) {
          cmd.addAll(List.of("-c:a", "aac", "-b:a", "160k", "-ar", "48000"));
       }
@@ -178,12 +194,29 @@ public final class ReplayBuffer implements AutoCloseable {
       return cmd;
    }
 
-   static List<String> codecArgs(String encoder, int quality) {
+   /**
+    * The bitrate ceiling in kbit/s. {@code maxMbps} 0 picks one like Medal's 50 Mbit/s for 1080p at 120 fps with
+    * H.265, scaled to the picture size and frame rate (H.264 needs about a third more for the same picture).
+    */
+   public static int bitrateCapKbps(String encoder, int width, int height, int fps, int maxMbps) {
+      if (maxMbps > 0) {
+         return maxMbps * 1000;
+      }
+
+      double pixels = (double)width * height / (1920.0 * 1080.0);
+      double rate = Math.pow(Math.max(15, fps) / 120.0, 0.75);
+      double kbps = 50000.0 * pixels * rate * (encoder.startsWith("hevc") ? 1.0 : 1.35);
+      return (int)Math.max(6000.0, Math.min(90000.0, Math.round(kbps / 500.0) * 500.0));
+   }
+
+   public static List<String> codecArgs(String encoder, int quality) {
       String q = String.valueOf(quality);
       return switch (encoder) {
-         case "h264_nvenc" -> List.of("-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", q, "-b:v", "0");
+         // p3 with high-quality tuning keeps the GPU's video engine well ahead of 120 fps without touching
+         // the 3D cores the game draws with; lookahead stays off so frames never pile up waiting.
+         case "h264_nvenc" -> List.of("-c:v", "h264_nvenc", "-preset", "p3", "-tune", "hq", "-rc", "vbr", "-cq", q, "-b:v", "0", "-rc-lookahead", "0");
          // H.265 makes much smaller files at the same quality.
-         case "hevc_nvenc" -> List.of("-c:v", "hevc_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", q, "-b:v", "0");
+         case "hevc_nvenc" -> List.of("-c:v", "hevc_nvenc", "-preset", "p3", "-tune", "hq", "-rc", "vbr", "-cq", q, "-b:v", "0", "-rc-lookahead", "0");
          case "h264_amf" -> List.of("-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", q, "-qp_p", q);
          case "h264_qsv" -> List.of("-c:v", "h264_qsv", "-global_quality", q);
          default -> List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", q);
@@ -229,6 +262,10 @@ public final class ReplayBuffer implements AutoCloseable {
       long expected = (nowMs - this.startMs) * this.settings.fps() / 1000L + 1L;
       int due = (int)Math.max(0L, expected - this.framesClaimed);
       if (due > 0) {
+         if (due > 1 && this.framesClaimed > 0L) {
+            this.framesSlow += due - 1;
+         }
+
          this.framesClaimed += due;
          this.lastClaimMs = nowMs;
       }
@@ -254,6 +291,22 @@ public final class ReplayBuffer implements AutoCloseable {
       return written == 0L ? 0.0 : 100.0 * this.framesRepeated / written;
    }
 
+   /** Share of frames repeated because the game ran below the clip frame rate (game fps too low). */
+   public double slowPercent() {
+      long written = this.framesWritten;
+      return written == 0L ? 0.0 : 100.0 * Math.min(this.framesSlow, written) / written;
+   }
+
+   /** Share of frames left out because the encoder was busy (recording itself is too heavy for this PC). */
+   public double droppedPercent() {
+      long written = this.framesWritten;
+      return written == 0L ? 0.0 : 100.0 * Math.min(this.framesDropped.get(), written) / written;
+   }
+
+   public long framesWritten() {
+      return this.framesWritten;
+   }
+
    public int frameBytes() {
       return this.frameBytes;
    }
@@ -263,6 +316,7 @@ public final class ReplayBuffer implements AutoCloseable {
       int total = copies + this.carry.getAndSet(0);
       if (this.closed || !this.queue.offer(new Frame(pixels, total))) {
          this.carry.addAndGet(total);
+         this.framesDropped.addAndGet(copies);
          this.free.offer(pixels);
       }
    }
@@ -276,6 +330,7 @@ public final class ReplayBuffer implements AutoCloseable {
       int total = copies + this.carry.getAndSet(0);
       if (this.closed || data.remaining() < this.frameBytes || !this.queue.offer(new Frame(null, data, done, total))) {
          this.carry.addAndGet(total);
+         this.framesDropped.addAndGet(copies);
          done.run();
          return false;
       }
@@ -285,6 +340,7 @@ public final class ReplayBuffer implements AutoCloseable {
 
    public void skip(int copies, byte[] unused) {
       this.carry.addAndGet(copies);
+      this.framesDropped.addAndGet(copies);
       if (unused != null) {
          this.free.offer(unused);
       }
@@ -366,26 +422,23 @@ public final class ReplayBuffer implements AutoCloseable {
    private void writeLoop() {
       long lastPrune = 0L;
 
-      try (Socket socket = this.videoServer.accept()) {
-         socket.setSendBufferSize(Math.max(socket.getSendBufferSize(), this.frameBytes * 2));
-         socket.setTcpNoDelay(true);
+      try (java.nio.channels.SocketChannel socket = this.acceptVideo()) {
+         if (socket == null) {
+            return;
+         }
+
+         socket.socket().setSendBufferSize(Math.max(socket.socket().getSendBufferSize(), this.frameBytes * 2));
+         socket.socket().setTcpNoDelay(true);
          this.videoSocket = socket;
-         OutputStream out = socket.getOutputStream();
-         byte[] chunk = new byte[1 << 18];
          while (!this.closed) {
             Frame frame = this.queue.poll(250L, TimeUnit.MILLISECONDS);
             if (frame != null) {
                try {
-                  if (frame.direct() != null) {
-                     java.nio.ByteBuffer data = frame.direct();
-                     int start = data.position();
-                     for (int offset = 0; offset < this.frameBytes; offset += chunk.length) {
-                        int length = Math.min(chunk.length, this.frameBytes - offset);
-                        data.get(start + offset, chunk, 0, length);
-                        out.write(chunk, 0, length);
-                     }
-                  } else {
-                     out.write(frame.pixels(), 0, this.frameBytes);
+                  java.nio.ByteBuffer data = frame.direct() != null
+                     ? frame.direct().duplicate().limit(frame.direct().position() + this.frameBytes)
+                     : java.nio.ByteBuffer.wrap(frame.pixels(), 0, this.frameBytes);
+                  while (data.hasRemaining()) {
+                     socket.write(data);
                   }
                } finally {
                   frame.finish();
@@ -411,6 +464,27 @@ public final class ReplayBuffer implements AutoCloseable {
             this.failure = "FFmpeg stopped accepting frames: " + this.lastLogLine();
          }
       }
+   }
+
+   /** Waits up to 15 s for FFmpeg to connect; null when the buffer closed first or FFmpeg never came. */
+   private java.nio.channels.SocketChannel acceptVideo() throws IOException, InterruptedException {
+      this.videoServerChannel.configureBlocking(false);
+      long deadline = System.nanoTime() + 15_000_000_000L;
+      while (!this.closed && System.nanoTime() < deadline) {
+         java.nio.channels.SocketChannel socket = this.videoServerChannel.accept();
+         if (socket != null) {
+            socket.configureBlocking(true);
+            return socket;
+         }
+
+         Thread.sleep(5L);
+      }
+
+      if (!this.closed) {
+         this.failure = "FFmpeg never connected for video: " + this.lastLogLine();
+      }
+
+      return null;
    }
 
    private long currentSegment() {
@@ -568,12 +642,12 @@ public final class ReplayBuffer implements AutoCloseable {
       }
 
       try {
-         Socket socket = this.videoSocket;
+         java.nio.channels.SocketChannel socket = this.videoSocket;
          if (socket != null) {
             socket.close();
          }
 
-         this.videoServer.close();
+         this.videoServerChannel.close();
       } catch (IOException ignored) {
       }
 
