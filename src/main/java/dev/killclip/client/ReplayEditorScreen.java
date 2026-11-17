@@ -31,7 +31,9 @@ final class ReplayEditorScreen extends Screen {
    private static final float[] ZOOMS = {1.0F, 1.5F, 2.0F, 3.0F, 4.0F};
    private static final int[] MODE_COLORS = {0xFF2F9E5B, 0xFF3B7DD8, 0xFFD98A2B};
    private static final int HANDLE = 0xFFFFC53D;
-   private static final int PANEL = 100;
+   private static final int PANEL = 114;
+   private static final int FREEZE = 0xFF7DD3FC;
+   private static final long[] FREEZE_LENGTHS = {1000L, 2000L, 3000L};
    private static final int LABELS = 46;
    private static final String[][] KEYS = {
       {"P", "Play / pause"},
@@ -46,6 +48,10 @@ final class ReplayEditorScreen extends Screen {
       {"Delete", "Merge the part into the one before"},
       {"WASD Space Shift", "Fly the spectator camera (Ctrl faster)"},
       {"Drag on the video", "Turn the spectator camera"},
+      {"F", "Freeze-frame here (press again: longer, then off)"},
+      {"T", "Add text here (or change the text under the playhead)"},
+      {"Drag text ends", "Change when the text shows"},
+      {"Ctrl+Z / Ctrl+Y", "Undo / redo"},
       {"E", "Hide / show the editor (full screen)"},
       {"C", "Move the keyframe here to the camera's spot"},
       {"H", "Show / hide these keys"}
@@ -64,10 +70,16 @@ final class ReplayEditorScreen extends Screen {
    private ButtonWidget cameraHereButton;
    private ButtonWidget splitButton;
    private ButtonWidget linkButton;
+   private ButtonWidget freezeButton;
+   private ButtonWidget undoButton;
+   private ButtonWidget redoButton;
+   /** The text picked on the text track (its ends can be dragged), or null. */
+   private ReplayEdit.Caption pickedText;
    private boolean vertical;
-   /** What the mouse is dragging: 0 nothing, 1 the playhead, 2 the trim start, 3 the trim end, 4 a camera part. */
+   /** What the mouse is dragging: 0 nothing, 1 the playhead, 2 the trim start, 3 the trim end, 4 a camera part, 5/6 a text's start/end, 7 a text. */
    private int dragging;
    private long dragMs;
+   private long dragStartMs;
 
    ReplayEditorScreen(ReplayPlayer replay) {
       super(Text.literal("Clip editor"));
@@ -83,6 +95,10 @@ final class ReplayEditorScreen extends Screen {
       int x = 94;
       this.addDrawableChild(FlatButton.of(Text.literal("In"), b -> this.trimStartHere()).dimensions(x, top + 3, 26, 18).build());
       this.addDrawableChild(FlatButton.of(Text.literal("Out"), b -> this.trimEndHere()).dimensions(x + 28, top + 3, 30, 18).build());
+      this.undoButton = this.addDrawableChild(FlatButton.of(Text.literal("Undo"), b -> this.undo()).dimensions(x + 62, top + 3, 28, 18).build());
+      this.redoButton = this.addDrawableChild(FlatButton.of(Text.literal("Redo"), b -> this.redo()).dimensions(x + 92, top + 3, 28, 18).build());
+      this.undoButton.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Undo (Ctrl+Z)")));
+      this.redoButton.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Redo (Ctrl+Y)")));
       this.addDrawableChild(FlatButton.of(Text.literal(this.vertical ? "9:16" : "16:9"), b -> {
          this.vertical = !this.vertical;
          b.setMessage(Text.literal(this.vertical ? "9:16" : "16:9"));
@@ -91,35 +107,43 @@ final class ReplayEditorScreen extends Screen {
          ReplayEdit.Switch part = this.replay.partHere();
          part.zoom = next(ZOOMS, part.zoom());
          this.replay.changedPart(part);
-      }).dimensions(right - 96, top + 3, 58, 18).build());
+      }).dimensions(right - 88, top + 3, 50, 18).build());
       this.speedButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> {
          ReplayEdit.Switch part = this.replay.partHere();
          part.speed = next(SPEEDS, part.speed());
          this.replay.changedPart(part);
-      }).dimensions(right - 162, top + 3, 64, 18).build());
+      }).dimensions(right - 150, top + 3, 60, 18).build());
       this.cameraHereButton = this.addDrawableChild(FlatButton.of(Text.literal("Set spot"), b -> this.saveCameraSpot())
-         .dimensions(right - 230, top + 3, 66, 18).build());
+         .dimensions(right - 198, top + 3, 46, 18).build());
+      this.cameraHereButton.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Move this keyframe to where the camera is now (C)")));
       // Bottom row.
       int y = this.height - 24;
       x = 8;
-      this.playButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.togglePlay()).dimensions(x, y, 40, 20).build());
-      x += 42;
-      this.povButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.nextPov()).dimensions(x, y, 84, 20).build());
-      x += 86;
-      this.splitButton = this.addDrawableChild(FlatButton.of(Text.literal("Split"), b -> this.split()).dimensions(x, y, 40, 20).build());
-      x += 42;
-      this.addDrawableChild(FlatButton.of(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 42, 20).build());
-      x += 44;
+      this.playButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.togglePlay()).dimensions(x, y, 36, 20).build());
+      x += 38;
+      this.povButton = this.addDrawableChild(FlatButton.of(Text.empty(), b -> this.nextPov()).dimensions(x, y, 60, 20).build());
+      this.povButton.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Camera (POV) of this part (V)")));
+      x += 62;
+      this.splitButton = this.addDrawableChild(FlatButton.of(Text.literal("Split"), b -> this.split()).dimensions(x, y, 36, 20).build());
+      x += 38;
+      this.addDrawableChild(FlatButton.of(Text.literal("Merge"), b -> this.merge()).dimensions(x, y, 38, 20).build());
+      x += 40;
+      this.freezeButton = this.addDrawableChild(FlatButton.of(Text.literal("Freeze"), b -> this.freeze()).dimensions(x, y, 48, 20).build());
+      this.freezeButton.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Freeze-frame: hold the picture here (F). Press again for longer, then off.")));
+      x += 50;
+      this.addDrawableChild(FlatButton.of(Text.literal("Text"), b -> this.text()).dimensions(x, y, 30, 20).build())
+         .setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("Put your own text on the video here (T)")));
+      x += 32;
       this.addDrawableChild(FlatButton.of(Text.literal(this.format.toUpperCase(Locale.ROOT)), b -> {
          this.format = FORMATS.get((FORMATS.indexOf(this.format) + 1) % FORMATS.size());
          b.setMessage(Text.literal(this.format.toUpperCase(Locale.ROOT)));
-      }).dimensions(x, y, 36, 20).build());
-      x += 38;
-      this.addDrawableChild(FlatButton.of(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 44, 20).primary().build());
-      x += 46;
-      this.addDrawableChild(FlatButton.of(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 34, 20).build());
-      x += 36;
-      this.addDrawableChild(FlatButton.of(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 40, 20).build());
+      }).dimensions(x, y, 30, 20).build());
+      x += 32;
+      this.addDrawableChild(FlatButton.of(Text.literal("Export"), b -> this.replay.export(this.format, this.vertical)).dimensions(x, y, 42, 20).primary().build());
+      x += 44;
+      this.addDrawableChild(FlatButton.of(Text.literal("Keys"), b -> showKeys = !showKeys).dimensions(x, y, 30, 20).build());
+      x += 32;
+      this.addDrawableChild(FlatButton.of(Text.literal("Leave"), b -> ReplayPlayer.stop()).dimensions(x, y, 36, 20).build());
       this.linkButton = this.addDrawableChild(FlatButton.of(Text.literal("Get link"), b -> {
          java.nio.file.Path file = ReplayPlayer.exportedFile;
          if (file != null) {
@@ -154,7 +178,14 @@ final class ReplayEditorScreen extends Screen {
       ReplayEdit.Switch part = this.part();
       ReplayPlayer.CameraMode mode = part != null ? part.mode : this.replay.mode();
       this.playButton.setMessage(Text.literal(this.replay.paused() ? "Play" : "Pause"));
-      this.povButton.setMessage(Text.literal("POV: " + mode.shortLabel));
+      this.povButton.setMessage(Text.literal(mode.shortLabel));
+      ReplayEdit.Freeze freeze = this.replay.edit.freezeNear(this.replay.clipTimeMs());
+      this.freezeButton.setMessage(Text.literal(freeze == null ? "Freeze" : "Hold " + freeze.durationMs / 1000L + "s"));
+      this.undoButton.active = this.replay.edit.canUndo();
+      this.redoButton.active = this.replay.edit.canRedo();
+      if (this.pickedText != null && !this.replay.edit.texts.contains(this.pickedText)) {
+         this.pickedText = null;
+      }
       this.speedButton.setMessage(Text.literal("Speed " + trim(part != null ? part.speed() : 1.0F) + "x"));
       this.zoomButton.setMessage(Text.literal("Zoom " + trim(part != null ? part.zoom() : 1.0F) + "x"));
       this.cameraHereButton.visible = mode == ReplayPlayer.CameraMode.SPECTATOR;
@@ -181,6 +212,57 @@ final class ReplayEditorScreen extends Screen {
 
    private void split() {
       this.replay.addSwitchHere();
+   }
+
+   private void undo() {
+      if (this.replay.edit.undo()) {
+         this.pickedText = null;
+         this.replay.editRestored();
+      }
+   }
+
+   private void redo() {
+      if (this.replay.edit.redo()) {
+         this.pickedText = null;
+         this.replay.editRestored();
+      }
+   }
+
+   /** Adds a freeze-frame at the playhead; on one already there, makes it longer, and after the longest takes it away. */
+   private void freeze() {
+      ReplayEdit edit = this.replay.edit;
+      long now = this.replay.clipTimeMs();
+      ReplayEdit.Freeze freeze = edit.freezeNear(now);
+      if (freeze == null) {
+         edit.addFreeze(new ReplayEdit.Freeze(now, FREEZE_LENGTHS[0]));
+         return;
+      }
+
+      for (long length : FREEZE_LENGTHS) {
+         if (length > freeze.durationMs) {
+            freeze.durationMs = length;
+            edit.save();
+            return;
+         }
+      }
+
+      edit.freezes.remove(freeze);
+      edit.save();
+   }
+
+   /** Opens the text under the playhead, or starts a new one there. */
+   private void text() {
+      long now = this.replay.clipTimeMs();
+      ReplayEdit.Caption existing = this.pickedText != null && now >= this.pickedText.startMs && now < this.pickedText.endMs ? this.pickedText : null;
+      if (existing == null) {
+         java.util.List<ReplayEdit.Caption> here = this.replay.edit.textsAt(now);
+         existing = here.isEmpty() ? null : here.get(here.size() - 1);
+      }
+
+      long end = Math.min(this.replay.clipLengthMs(), now + 2000L);
+      ReplayEdit.Caption fresh = new ReplayEdit.Caption(Math.min(now, Math.max(0L, end - 500L)), Math.max(end, now + 500L));
+      this.replay.setPaused(true);
+      this.client.setScreen(new TextOverlayScreen(this, this.replay, existing, fresh));
    }
 
    private void keyframe() {
@@ -232,6 +314,10 @@ final class ReplayEditorScreen extends Screen {
 
    private int cameraTrackTop() {
       return this.panelTop() + 53;
+   }
+
+   private int textTrackTop() {
+      return this.panelTop() + 73;
    }
 
    private int xOf(long ms) {
@@ -294,6 +380,16 @@ final class ReplayEditorScreen extends Screen {
       Ui.outline(context, area[0] - 1, area[1] - 1, area[0] + area[2] + 1, area[1] + area[3] + 1, Ui.LINE_STRONG);
       // The game picture is stored bottom row first, so flip it.
       context.drawTexturedQuad(PREVIEW_ID, area[0], area[1], area[0] + area[2], area[1] + area[3], 0.0F, 1.0F, 1.0F, 0.0F);
+      // Your text, as it will be in the video.
+      long now = this.replay.clipTimeMs();
+      TextOverlays.draw(context, this.textRenderer, this.replay.edit.textsAt(now), now, area[0], area[1], area[2], area[3], this.vertical, 1.0F);
+      if (this.vertical) {
+         // The part a 9:16 export keeps.
+         int keep = Math.round(area[3] * 9.0F / 16.0F);
+         int kx = area[0] + (area[2] - keep) / 2;
+         context.fill(area[0], area[1], kx, area[1] + area[3], 0x66000000);
+         context.fill(kx + keep, area[1], area[0] + area[2], area[1] + area[3], 0x66000000);
+      }
       // The timeline panel: a slightly lighter surface with a hairline on top.
       context.fill(0, this.panelTop(), this.width, this.height, 0xFF131418);
       context.fill(0, this.panelTop(), this.width, this.panelTop() + 1, Ui.LINE_STRONG);
@@ -378,9 +474,47 @@ final class ReplayEditorScreen extends Screen {
          }
       }
 
-      // Playhead across the ruler and both tracks.
+      // Freeze-frames: light blue marks on the clip track.
+      for (ReplayEdit.Freeze freeze : this.replay.edit.freezes) {
+         int fx = this.xOf(freeze.timeMs);
+         context.fill(fx - 1, clipTop - 2, fx + 2, clipTop + 16, FREEZE);
+         Ui.text(context, this.textRenderer, freeze.durationMs / 1000L + "s", fx + 3, clipTop - 9, FREEZE);
+      }
+
+      // Text track: one bar per text you wrote, the picked one with handles to drag.
+      int textTop = this.textTrackTop();
+      Ui.text(context, this.textRenderer, "Text", 8, textTop + 2, Ui.MUTED);
+      context.fill(left, textTop, right, textTop + 12, 0xFF16181C);
+      for (ReplayEdit.Caption caption : this.replay.edit.texts) {
+         long start = caption.startMs;
+         long end = caption.endMs;
+         if (caption == this.pickedText && this.dragging >= 5) {
+            long[] range = this.draggedText(caption);
+            start = range[0];
+            end = range[1];
+         }
+
+         int x0 = this.xOf(start);
+         int x1 = Math.max(x0 + 3, this.xOf(end));
+         boolean chosen = caption == this.pickedText;
+         context.fill(x0, textTop + 1, x1, textTop + 11, chosen ? 0xFF5B3FA8 : 0xFF3F2E73);
+         Ui.text(context, this.textRenderer, this.textRenderer.trimToWidth(caption.text, Math.max(0, x1 - x0 - 6)), x0 + 3, textTop + 2, Ui.TEXT);
+         if (chosen) {
+            Ui.outline(context, x0, textTop, x1, textTop + 12, Ui.TEXT);
+            context.fill(x0, textTop, x0 + 2, textTop + 12, HANDLE);
+            context.fill(x1 - 2, textTop, x1, textTop + 12, HANDLE);
+         }
+      }
+
+      // Every change is saved as you make it; say so for a moment after each one.
+      long since = System.currentTimeMillis() - this.replay.edit.lastSaveMs;
+      if (this.replay.edit.lastSaveMs > 0L && since < 2500L) {
+         Ui.text(context, this.textRenderer, "Saved", 8, rulerY, Ui.fade(Ui.SUCCESS, since < 1500L ? 1.0F : 1.0F - (since - 1500L) / 1000.0F));
+      }
+
+      // Playhead across the ruler and the tracks.
       int played = this.xOf(now);
-      context.fill(played, rulerY + 4, played + 1, camTop + 17, Ui.TEXT);
+      context.fill(played, rulerY + 4, played + 1, textTop + 12, Ui.TEXT);
       context.fill(played - 3, rulerY + 1, played + 4, rulerY + 5, Ui.TEXT);
       if (this.replay.exporting()) {
          int w = this.textRenderer.getWidth("Exporting...") + 16;
@@ -409,6 +543,26 @@ final class ReplayEditorScreen extends Screen {
          this.linkButton.setX(Math.min(this.width - 60, box[2] + 4));
          this.linkButton.setY(box[1]);
       }
+   }
+
+   /** Where the picked text would be with the drag so far: {start, end}, at least half a second long. */
+   private long[] draggedText(ReplayEdit.Caption caption) {
+      long length = this.replay.clipLengthMs();
+      long start = caption.startMs;
+      long end = caption.endMs;
+      switch (this.dragging) {
+         case 5 -> start = Math.min(this.dragMs, end - 500L);
+         case 6 -> end = Math.max(this.dragMs, start + 500L);
+         case 7 -> {
+            long moved = Math.max(-start, Math.min(length - end, this.dragMs - this.dragStartMs));
+            start += moved;
+            end += moved;
+         }
+         default -> {
+         }
+      }
+
+      return new long[]{Math.max(0L, start), Math.min(Math.max(length, 500L), end)};
    }
 
    private void drawPart(DrawContext context, int x0, int x1, int y, int color, String label, boolean picked) {
@@ -473,7 +627,7 @@ final class ReplayEditorScreen extends Screen {
       return new int[]{center - w / 2, y, center + w / 2, y + 14};
    }
 
-   private static String clock(long ms) {
+   static String clock(long ms) {
       return String.format(Locale.ROOT, "%d:%04.1f", ms / 60000L, (ms % 60000L) / 1000.0);
    }
 
@@ -518,6 +672,43 @@ final class ReplayEditorScreen extends Screen {
             this.dragMs = this.msAt(click.x());
             return true;
          }
+
+         int textTop = this.textTrackTop();
+         if (y >= textTop - 1 && y <= textTop + 13) {
+            ReplayEdit.Caption picked = this.pickedText;
+            if (picked != null && Math.abs(click.x() - this.xOf(picked.startMs)) <= 4) {
+               this.dragging = 5;
+            } else if (picked != null && Math.abs(click.x() - this.xOf(picked.endMs)) <= 4) {
+               this.dragging = 6;
+            } else {
+               long at = this.msAt(click.x());
+               ReplayEdit.Caption hit = null;
+               for (ReplayEdit.Caption caption : this.replay.edit.texts) {
+                  if (click.x() >= this.xOf(caption.startMs) - 1 && click.x() <= Math.max(this.xOf(caption.startMs) + 3, this.xOf(caption.endMs)) + 1) {
+                     hit = caption;
+                  }
+               }
+
+               if (hit == null) {
+                  this.pickedText = null;
+                  this.replay.seekClip(at);
+                  return true;
+               }
+
+               if (doubled && hit == this.pickedText) {
+                  this.replay.setPaused(true);
+                  this.client.setScreen(new TextOverlayScreen(this, this.replay, hit, hit.copy()));
+                  return true;
+               }
+
+               this.pickedText = hit;
+               this.dragging = 7;
+            }
+
+            this.dragStartMs = this.msAt(click.x());
+            this.dragMs = this.dragStartMs;
+            return true;
+         }
       }
 
       return super.mouseClicked(click, doubled);
@@ -551,8 +742,25 @@ final class ReplayEditorScreen extends Screen {
       }
 
       int what = this.dragging;
-      this.dragging = 0;
       long ms = this.msAt(click.x());
+      if (what >= 5 && this.pickedText != null) {
+         ReplayEdit.Caption caption = this.pickedText;
+         this.dragMs = ms;
+         long[] range = this.draggedText(caption);
+         this.dragging = 0;
+         if (what == 7 && Math.abs(ms - this.dragStartMs) < 80L) {
+            // A plain click on a text: jump to where it starts.
+            this.replay.seekClip(caption.startMs);
+         } else if (range[0] != caption.startMs || range[1] != caption.endMs) {
+            caption.startMs = range[0];
+            caption.endMs = range[1];
+            this.replay.edit.save();
+         }
+
+         return true;
+      }
+
+      this.dragging = 0;
       long[] trim = this.replay.trim();
       switch (what) {
          case 2 -> this.replay.setTrim(ms, trim[1]);
@@ -571,6 +779,26 @@ final class ReplayEditorScreen extends Screen {
    @Override
    public boolean keyPressed(KeyInput input) {
       switch (input.key()) {
+         case GLFW.GLFW_KEY_Z -> {
+            if (!input.hasCtrlOrCmd()) {
+               return super.keyPressed(input);
+            }
+
+            if (input.hasShift()) {
+               this.redo();
+            } else {
+               this.undo();
+            }
+         }
+         case GLFW.GLFW_KEY_Y -> {
+            if (!input.hasCtrlOrCmd()) {
+               return super.keyPressed(input);
+            }
+
+            this.redo();
+         }
+         case GLFW.GLFW_KEY_F -> this.freeze();
+         case GLFW.GLFW_KEY_T -> this.text();
          case GLFW.GLFW_KEY_E -> this.close();
          case GLFW.GLFW_KEY_H -> showKeys = !showKeys;
          case GLFW.GLFW_KEY_P -> this.togglePlay();

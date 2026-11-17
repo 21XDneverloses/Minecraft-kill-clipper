@@ -109,12 +109,46 @@ final class DevEditorCheck {
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR editor opened by itself, trim {}", java.util.Arrays.toString(replay.trim()));
                client.setScreen(new ReplayEditorScreen(replay));
             }
-            case 8 -> shot(client, "editor-timeline.png");
+            case 8 -> {
+               shot(client, "editor-timeline.png");
+               // Editor extras: a freeze-frame, two texts, then undo and redo.
+               ReplayPlayer replay = ReplayPlayer.active();
+               replay.edit.addFreeze(new ReplayEdit.Freeze(4000L, 2000L));
+               ReplayEdit.Caption title = new ReplayEdit.Caption(2000L, 6000L);
+               title.text = "CLUTCH 1v3";
+               title.position = 0;
+               title.size = 2;
+               title.color = 2;
+               replay.edit.texts.add(title);
+               replay.edit.save();
+               Thread.sleep(150L);
+               ReplayEdit.Caption gg = new ReplayEdit.Caption(5000L, 8500L);
+               gg.text = "gg";
+               replay.edit.texts.add(gg);
+               replay.edit.save();
+               Thread.sleep(150L);
+               boolean undone = replay.edit.undo();
+               int afterUndo = replay.edit.texts.size();
+               boolean redone = replay.edit.redo();
+               KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR undo {} -> {} texts, redo {} -> {} texts, freezes {}, play {} ms", undone, afterUndo, redone,
+                  replay.edit.texts.size(), replay.edit.freezes.size(), replay.exportPlayMs());
+               replay.seekClip(3000L);
+            }
             case 9 -> {
+               shot(client, "editor-extras.png");
+               ReplayPlayer replay = ReplayPlayer.active();
+               KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR after jumping back: undo {}, texts {}", replay.edit.canUndo(), replay.edit.texts.size());
+               client.setScreen(new TextOverlayScreen(client.currentScreen, replay, replay.edit.texts.get(0), replay.edit.texts.get(0).copy()));
+            }
+            case 10 -> {
+               shot(client, "editor-text.png");
+               client.currentScreen.close();
+            }
+            case 11 -> {
                ReplayPlayer.active().export("mp4", true);
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR export started");
             }
-            case 10 -> {
+            case 12 -> {
                ExportJob job = ExportJob.active;
                if (job != null && job.progress > 0.4F && !barShot) {
                   barShot = true;
@@ -126,9 +160,14 @@ final class DevEditorCheck {
                }
 
                KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR status: {}", ReplayPlayer.exportStatus);
+               java.nio.file.Path out = ReplayPlayer.exportedFile;
+               String ffmpeg = KillClipperClient.instance().ffmpeg();
+               if (out != null && ffmpeg != null) {
+                  KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR exported length {} s", dev.killclip.core.VideoTools.duration(ffmpeg, out));
+               }
                shot(client, "editor-saved.png");
             }
-            case 11 -> {
+            case 13 -> {
                // Back to the library and press Edit again, like a player after an export.
                ReplayPlayer.stop();
                ClipLibraryScreen library = new ClipLibraryScreen(new TitleScreen());
@@ -140,7 +179,7 @@ final class DevEditorCheck {
                   }
                }
             }
-            case 12 -> {
+            case 14 -> {
                if (!(client.currentScreen instanceof ReplayEditorScreen)) {
                   if (now - stepAt > 30000L) {
                      KillClipperClient.LOGGER.info("KILLCLIP_DEVEDITOR reopen FAILED, screen {}", client.currentScreen);
