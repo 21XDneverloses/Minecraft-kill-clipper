@@ -65,7 +65,7 @@ public final class ClipConfig {
    public static ClipConfig load() throws IOException {
       if (!Files.exists(PATH)) {
          ClipConfig config = new ClipConfig();
-         config.configVersion = 4;
+         config.configVersion = 5;
          config.save();
          return config;
       } else {
@@ -97,10 +97,11 @@ public final class ClipConfig {
             upgraded = true;
          }
 
-         if (config.configVersion < 4) {
-            // 1.15.0: clipping is silent by default; no "saving"/"saved" notices unless turned back on.
+         if (config.configVersion < 5) {
+            // Clipping is silent by default; no "saving"/"saved" notices unless turned back on.
+            // (Version 4 is taken by the recording setup changes.)
             config.feedback = false;
-            config.configVersion = 4;
+            config.configVersion = 5;
             upgraded = true;
          }
 
