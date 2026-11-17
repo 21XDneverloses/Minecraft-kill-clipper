@@ -106,12 +106,32 @@ public final class KillClipperClient implements ClientModInitializer {
       return INSTANCE;
    }
 
+   /** Dev and screenshot runs skip the first-run setup unless -Dkillclip.devSetup is set. */
+   private static final boolean DEV_RUN = !Boolean.getBoolean("killclip.devSetup") && (!System.getProperty("killclip.devReplay", "").isEmpty()
+      || !System.getProperty("killclip.devEditor", "").isEmpty() || Boolean.getBoolean("killclip.devReel") || !System.getProperty("killclip.devConnect", "").isEmpty());
+   private boolean setupShown;
+   private static net.minecraft.client.option.KeyBinding clipKey;
+
+   /** The key that saves a clip right away, as shown in the game's language. */
+   static String clipKeyName() {
+      return clipKey == null ? "F8" : clipKey.getBoundKeyLocalizedText().getString();
+   }
+
    public void onInitializeClient() {
       INSTANCE = this;
+      clipKey = net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding(new net.minecraft.client.option.KeyBinding(
+         "key.killclipper.clip", org.lwjgl.glfw.GLFW.GLFW_KEY_F8,
+         net.minecraft.client.option.KeyBinding.Category.create(net.minecraft.util.Identifier.of("killclipper", "main"))));
       Path clipDir = FabricLoader.getInstance().getGameDir().resolve("killclips");
       ReplayCapture.init(clipDir.resolve(".replay"));
       net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
          if (screen instanceof net.minecraft.client.gui.screen.TitleScreen) {
+            if (!this.setupShown && !this.config.setupDone && this.started && !DEV_RUN) {
+               // First launch: the welcome setup, once, over the title screen.
+               this.setupShown = true;
+               client.send(() -> client.setScreen(new SetupScreen(screen)));
+            }
+
             net.fabricmc.fabric.api.client.screen.v1.Screens.getButtons(screen).add(
                net.minecraft.client.gui.widget.ButtonWidget.builder(Text.literal("Clip Editor"), b -> client.setScreen(new ClipLibraryScreen(screen)))
                   .dimensions(4, 4, 80, 20).build());
@@ -180,6 +200,12 @@ public final class KillClipperClient implements ClientModInitializer {
       ClientTickEvents.END_CLIENT_TICK.register(client -> {
          if (this.captureUntil != 0L && nowMs() >= this.captureUntil) {
             this.finishCapture();
+         }
+
+         while (clipKey.wasPressed()) {
+            if (client.world != null && !ReplayPlayer.playing()) {
+               this.clipNow();
+            }
          }
 
          this.trackProjectileHits(client);
@@ -729,6 +755,11 @@ public final class KillClipperClient implements ClientModInitializer {
       if (SELF_TEST_MS > 0L && !this.selfTestDone && nowMs() - this.launchMs >= SELF_TEST_MS) {
          this.selfTestDone = true;
          long now = nowMs();
+         if (Boolean.getBoolean("killclip.devOpenSettings")) {
+            // Dev check: show the settings with the live smoothness line.
+            mc.setScreen(new KillClipSettingsScreen(mc.currentScreen));
+         }
+
          this.recorder.save(now - 10000L, now, "selftest", this.config.clipsDir(), this.config.fileFormat,
             file -> LOGGER.info("KILLCLIP_SELFTEST_CLIP saved {}", file), error -> LOGGER.error("KILLCLIP_SELFTEST_CLIP failed: {}", error));
          ReplayCapture.save(now - 10000L, now, this.config.clipsDir().resolve("selftest.kcreplay")).whenComplete((path, error) -> {
@@ -846,6 +877,42 @@ public final class KillClipperClient implements ClientModInitializer {
    }
 
    /** Saves the last 10 seconds right now. */
+   /** The clip key: saves the time before the kill setting (at least 10 s) up to now. */
+   void clipNow() {
+      long now = nowMs();
+      this.saveClip(now - Math.max(10000L, this.config.preRollMs), now, now, "clip", "Manual", true);
+   }
+
+   /** Tests every video encoder with the bundled FFmpeg, off the render thread. */
+   CompletableFuture<java.util.Map<String, Boolean>> testEncoders() {
+      return CompletableFuture.supplyAsync(() -> {
+         long deadline = System.currentTimeMillis() + 60000L;
+         String ffmpeg = this.ffmpeg();
+         while (ffmpeg == null && System.currentTimeMillis() < deadline) {
+            try {
+               Thread.sleep(200L);
+            } catch (InterruptedException e) {
+               break;
+            }
+
+            ffmpeg = this.ffmpeg();
+         }
+
+         if (ffmpeg == null) {
+            return java.util.Map.of();
+         }
+
+         java.util.Map<String, Boolean> result = dev.killclip.core.EncoderProbe.testAll(ffmpeg);
+         LOGGER.info("Encoder test: {}", result);
+         return result;
+      });
+   }
+
+   /** How smooth the live recording is, or null while it is not recording yet. */
+   ClipRecorder.Health recordingHealth() {
+      return this.recorder.health();
+   }
+
    public void testClip() {
       long now = nowMs();
       this.saveClip(now - 10000L, now, now, "test", "Test", true);
@@ -905,10 +972,12 @@ public final class KillClipperClient implements ClientModInitializer {
    private int status() {
       tell("Automatic: " + (this.config.enabled ? "ON" : "OFF") + " | " + this.recordingSummary() + (this.recorder.running() ? "" : " (not running yet)")
          + " | server: " + this.host() + " | clips saved: " + this.clipsSaved);
-      double repeated = this.recorder.repeatedPercent();
-      if (repeated >= 0.0) {
-         tell(String.format("Smoothness: %.1f%% of frames repeated, game at %d fps%s", repeated, MinecraftClient.getInstance().getCurrentFps(),
-            repeated > 10.0 ? " (choppy: try a lower FPS or resolution)" : ""));
+      ClipRecorder.Health health = this.recorder.health();
+      if (health != null) {
+         String advice = health.advice();
+         tell(String.format("Smoothness: %.1f%% of frames repeated (%.1f%% game too slow, %.1f%% dropped by the recorder), game at %d fps | %s %dx%d %d fps%s",
+            health.repeated(), health.slow(), health.dropped(), MinecraftClient.getInstance().getCurrentFps(),
+            SetupScreen.encoderName(health.encoder()), health.width(), health.height(), health.fps(), advice.isEmpty() ? "" : " | " + advice));
       }
       tell("Streak: " + this.config.streakMinKills + "+ kills within " + this.config.streakGapMs / 1000.0 + " s | clips folder: " + this.config.clipsDir().toAbsolutePath());
       return 1;
