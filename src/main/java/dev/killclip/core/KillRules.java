@@ -90,6 +90,74 @@ public final class KillRules {
       return message.contains(local) || YOU.matcher(message).find();
    }
 
+   /**
+    * Who the chat says killed whom, whoever the killer is: the exact rules first, then the shapes searched
+    * anywhere in the line. Used to notice when another player got the kill on someone you had hit, so that
+    * death is not counted as yours. Both names must be online players and different from each other.
+    */
+   public static Optional<KillRules.Kill> anyKill(String message, List<Pattern> exact, List<Pattern> search, Set<String> online) {
+      String plain = clean(message);
+      if (plain.length() > 1024 || plain.startsWith("<")) {
+         return Optional.empty();
+      }
+
+      for (Pattern pattern : exact) {
+         Matcher match = pattern.matcher(plain);
+         if (match.matches() && pattern.pattern().contains("(?<killer>")) {
+            Optional<KillRules.Kill> result = credit(match.group("killer"), match.group("victim"), online);
+            if (result.isPresent()) {
+               return result;
+            }
+         }
+      }
+
+      for (Pattern pattern : search) {
+         if (!pattern.pattern().contains("(?<killer>")) {
+            continue;
+         }
+
+         Matcher match = pattern.matcher(plain);
+         while (match.find()) {
+            String before = plain.substring(0, match.start());
+            if (before.contains(":") || before.contains("<")) {
+               continue;
+            }
+
+            Optional<KillRules.Kill> result = credit(match.group("killer"), match.group("victim"), online);
+            if (result.isPresent()) {
+               return result;
+            }
+         }
+      }
+
+      return Optional.empty();
+   }
+
+   /** A vanilla death message (by translation key), whoever the killer is. */
+   public static Optional<KillRules.Kill> anyKillFromTranslation(String key, List<String> args, Set<String> online) {
+      return VanillaDeathMessages.englishTemplates().containsKey(key) && args.size() >= 2
+         ? credit(clean(args.get(1)), clean(args.get(0)), online)
+         : Optional.empty();
+   }
+
+   private static Optional<KillRules.Kill> credit(String killer, String victim, Set<String> online) {
+      return !killer.equalsIgnoreCase(victim) && online.contains(killer) && online.contains(victim)
+         ? Optional.of(new KillRules.Kill(killer, victim))
+         : Optional.empty();
+   }
+
+   /**
+    * Writes your real name in place of a nickname the server shows for you, so rules that look for your
+    * name also see lines that use the nickname. Only whole words are replaced.
+    */
+   public static String aliasAsName(String message, String alias, String local) {
+      if (alias == null || alias.length() < 3 || alias.equals(local)) {
+         return message;
+      }
+
+      return Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(alias) + "(?![A-Za-z0-9_])").matcher(message).replaceAll(Matcher.quoteReplacement(local));
+   }
+
    private static final Pattern NAME_TOKEN = Pattern.compile("[A-Za-z0-9_]{1,16}");
    private static final Pattern KILL_WORD = Pattern.compile(
       "(?i)\\b(?:killed|kills|slain|slew|slayed|eliminated|defeated|destroyed|murdered|finished|obliterated|annihilated|blown|blew"
@@ -244,7 +312,7 @@ public final class KillRules {
    }
 
    private static Optional<KillRules.Kill> validate(String killer, String victim, String local, Set<String> online) {
-      return killer.equals(local) && !victim.equals(local) && online.contains(victim) ? Optional.of(new KillRules.Kill(killer, victim)) : Optional.empty();
+      return killer.equalsIgnoreCase(local) && !victim.equalsIgnoreCase(local) && online.contains(victim) ? Optional.of(new KillRules.Kill(killer, victim)) : Optional.empty();
    }
 
    public static String normalizeHost(String address) {

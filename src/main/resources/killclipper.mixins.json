@@ -12,7 +12,8 @@
     "SoundEngineMixin",
     "ConnectScreenMixin",
     "HandSwingMixin",
-    "HeldItemRendererMixin"
+    "HeldItemRendererMixin",
+    "PlayerDeathStatusMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -26,7 +26,8 @@ public final class ClipConfig {
    /** Bumped when a default changes so older config files pick it up. */
    public int configVersion = 0;
    public boolean enabled = true;
-   public boolean feedback = true;
+   /** "Saving clip" / "Clip saved" notices above the hotbar. Off by default: clipping works silently. */
+   public boolean feedback = false;
    public int duplicateWindowMs = 3000;
    public boolean trackHits = true;
    /** Count kill messages in unknown wording when they say you killed an online player. */
@@ -64,7 +65,7 @@ public final class ClipConfig {
    public static ClipConfig load() throws IOException {
       if (!Files.exists(PATH)) {
          ClipConfig config = new ClipConfig();
-         config.configVersion = 3;
+         config.configVersion = 4;
          config.save();
          return config;
       } else {
@@ -93,6 +94,13 @@ public final class ClipConfig {
             // 1.5.0: the buffer sizes itself to the clip settings.
             config.bufferSeconds = 0;
             config.configVersion = 3;
+            upgraded = true;
+         }
+
+         if (config.configVersion < 4) {
+            // 1.15.0: clipping is silent by default; no "saving"/"saved" notices unless turned back on.
+            config.feedback = false;
+            config.configVersion = 4;
             upgraded = true;
          }
 
