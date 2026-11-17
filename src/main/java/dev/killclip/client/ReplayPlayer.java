@@ -445,8 +445,22 @@ public final class ReplayPlayer {
    public void setSpeed(float speed) {
       this.speed = MathHelper.clamp(speed, 0.125F, 4.0F);
       if (this.client.world != null) {
-         this.client.world.getTickManager().setTickRate(20.0F * this.speed);
+         this.client.world.getTickManager().setTickRate(tickRate(this.speed));
       }
+   }
+
+   /**
+    * The world's tick rate for a playback speed. Minecraft's client never ticks faster than 20 times a second
+    * (MinecraftClient.getTargetMillisPerTick takes the larger of 50 ms and the world's tick time), so slow motion
+    * slows the ticks down, while faster playback keeps 20 ticks a second and moves the replay further each tick.
+    */
+   private static float tickRate(float speed) {
+      return 20.0F * Math.min(1.0F, speed);
+   }
+
+   /** How far the replay moves in one game tick at a playback speed, in ms of recording. */
+   static long msPerTick(float speed) {
+      return Math.round(50.0 * Math.max(1.0F, speed));
    }
 
    /** Jumps to a time in the clip. Going back restarts the replay and fast-forwards. */
@@ -677,6 +691,8 @@ public final class ReplayPlayer {
       }
 
       exportStatus = "";
+      // The "E opens the editor" hint must not end up in the video.
+      this.client.inGameHud.setOverlayMessage(Text.empty(), false);
       this.exportFormat = format;
       this.exportVertical = vertical;
       this.exportStartRealMs = 0L;
@@ -918,7 +934,7 @@ public final class ReplayPlayer {
          target = this.timeMs;
       } else {
          this.freezeUntilMs = 0L;
-         target = this.timeMs + 50L;
+         target = this.timeMs + msPerTick(this.speed);
          ReplayEdit.Freeze freeze = this.timeMs >= this.clipStartMs ? this.edit.freezeCrossed(this.timeMs - this.clipStartMs, target - this.clipStartMs) : null;
          if (freeze != null) {
             // Stop on the freeze-frame and hold it while the world stands still.
@@ -939,7 +955,7 @@ public final class ReplayPlayer {
       this.updateStand();
       if (this.client.world != null) {
          this.client.world.getTickManager().setFrozen(this.paused || this.freezeUntilMs > 0L);
-         this.client.world.getTickManager().setTickRate(20.0F * this.speed);
+         this.client.world.getTickManager().setTickRate(tickRate(this.speed));
       }
 
       ClientPlayerEntity player = this.client.player;
