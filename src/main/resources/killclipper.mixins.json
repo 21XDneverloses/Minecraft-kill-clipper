@@ -12,7 +12,8 @@
     "SoundEngineMixin",
     "ConnectScreenMixin",
     "HandSwingMixin",
-    "HeldItemRendererMixin"
+    "HeldItemRendererMixin",
+    "InGameHudMixin"
   ],
   "injectors": {
     "defaultRequire": 1

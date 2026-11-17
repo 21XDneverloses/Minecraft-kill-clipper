@@ -191,6 +191,7 @@ public final class KillClipperClient implements ClientModInitializer {
          this.runDevReplay(client);
          DevEditorCheck.tick(client);
          DevReelCheck.tick(client);
+         DevLibraryCheck.tick(client);
          ReelAngles.tick(client);
          boolean dead = client.player != null && client.player.isDead();
          if (dead && !this.wasDead && !ReplayPlayer.playing() && client.world != null) {
@@ -602,6 +603,7 @@ public final class KillClipperClient implements ClientModInitializer {
          LOGGER.info("Saved clip {}", file);
          this.saveMeta(file, fromMs, videoLead, kills);
          this.saveReplay(replay, fromMs, toMs, videoLead, file);
+         ClipStorage.enforceLater();
       }, error -> {
          if (replay != null) {
             replay.release();
