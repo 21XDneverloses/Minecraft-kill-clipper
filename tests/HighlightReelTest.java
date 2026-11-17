@@ -33,6 +33,7 @@ public class HighlightReelTest {
       check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_kill.mp4"), 0L).kills() == 1, "kill name");
       check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_4-kill-streak.mkv"), 0L).kills() == 4, "streak name");
       check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_kill_vertical.mp4"), 0L) == null, "vertical copy is not a clip");
+      check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_2-kill-streak_clutch.mp4"), 0L).kills() == 2, "renamed streak");
       check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_test.mp4"), 0L) == null, "test clip is not a kill");
       check(HighlightReel.clip(Path.of("2026-11-10_21-04-33_kill.kcreplay"), 0L) == null, "replay is not a video");
    }

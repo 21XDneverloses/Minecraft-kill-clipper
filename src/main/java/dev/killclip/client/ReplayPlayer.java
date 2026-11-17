@@ -123,6 +123,8 @@ public final class ReplayPlayer {
    private long timeMs;
    private long seekTargetMs = -1L;
    private boolean paused;
+   /** When a freeze-frame ends (export frame time while exporting, else real time); 0 when none is holding. */
+   private long freezeUntilMs;
    private float speed = 1.0F;
    private CameraMode mode = CameraMode.FIRST_PERSON;
    private MarkerEntity freeCamera;
@@ -176,6 +178,11 @@ public final class ReplayPlayer {
    private net.minecraft.network.message.ChatVisibility chatBeforeExport;
 
    private ReplayPlayer(MinecraftClient client, Path file, List<ReplayLog.Entry> entries, Map<String, String> header) {
+      this(client, file, entries, header, null);
+   }
+
+   /** {@code edit} carries the edit (with its undo history) over when jumping back restarts the replay. */
+   private ReplayPlayer(MinecraftClient client, Path file, List<ReplayLog.Entry> entries, Map<String, String> header, ReplayEdit edit) {
       this.client = client;
       this.file = file;
       this.entries = entries;
@@ -203,7 +210,7 @@ public final class ReplayPlayer {
       this.clipStartMs = parse(header.get("clipStartMs"), 0L);
       this.videoLeadMs = parse(header.get("videoLeadMs"), 0L);
       this.clipEndMs = parse(header.get("clipEndMs"), entries.isEmpty() ? 0L : entries.getLast().timeMs());
-      this.edit = ReplayEdit.load(file);
+      this.edit = edit != null ? edit : ReplayEdit.load(file);
       this.connection = new ClientConnection(NetworkSide.CLIENTBOUND);
       ReplayCapture.ignore(this.connection);
       // Everything the client tries to send to the "server" is dropped.
@@ -404,6 +411,22 @@ public final class ReplayPlayer {
       return this.paused;
    }
 
+   /** True while a freeze-frame holds the picture. */
+   boolean frozen() {
+      return this.freezeUntilMs > 0L;
+   }
+
+   /** The clock a freeze-frame is timed by: the export's frame clock, so it lasts exactly as long in the video. */
+   private static long freezeClock() {
+      ExportJob job = ExportJob.active;
+      return job != null ? job.frameTimeMs() : net.minecraft.util.Util.getMeasuringTimeMs();
+   }
+
+   /** Whether this replay is being exported as a 9:16 video (the text stays inside the middle of the picture). */
+   boolean exportingVertical() {
+      return this.exportFormat != null && this.exportVertical;
+   }
+
    public float speed() {
       return this.speed;
    }
@@ -429,6 +452,7 @@ public final class ReplayPlayer {
    /** Jumps to a time in the clip. Going back restarts the replay and fast-forwards. */
    public void seekClip(long clipMs) {
       long target = this.clipStartMs + MathHelper.clamp(clipMs, 0L, this.clipLengthMs());
+      this.freezeUntilMs = 0L;
       if (target >= this.timeMs) {
          this.seekTargetMs = target;
          return;
@@ -448,7 +472,7 @@ public final class ReplayPlayer {
          // Going back replays from the start, reusing the records already in memory instead of reading the file again.
          Map<String, String> header = this.header;
          stop();
-         active = new ReplayPlayer(this.client, this.file, this.entries, header);
+         active = new ReplayPlayer(this.client, this.file, this.entries, header, this.edit);
          ReplayPlayer restarted = active;
          restarted.seekTargetMs = target;
          restarted.mode = keepMode;
@@ -500,6 +524,12 @@ public final class ReplayPlayer {
          total += Math.min(50L, trim[1] - t) / (double)this.speedAt(t);
       }
 
+      for (ReplayEdit.Freeze freeze : this.edit.freezes) {
+         if (freeze.timeMs > trim[0] && freeze.timeMs <= trim[1]) {
+            total += freeze.durationMs;
+         }
+      }
+
       return (long)total;
    }
 
@@ -539,7 +569,10 @@ public final class ReplayPlayer {
          parts.add(new dev.killclip.core.VideoTools.AudioPart((partStart + this.videoLeadMs) / 1000.0, (trim[1] + this.videoLeadMs) / 1000.0, Math.max(0.125F, partSpeed)));
       }
 
-      return parts;
+      // Freeze-frames are silent: cut the sound where each one is and put a gap of its length there.
+      List<ReplayEdit.Freeze> freezes = this.edit.freezes.stream().filter(f -> f.timeMs > trim[0] && f.timeMs <= trim[1]).toList();
+      return dev.killclip.core.VideoTools.withSilences(parts, freezes.stream().map(f -> (f.timeMs + this.videoLeadMs) / 1000.0).toList(),
+         freezes.stream().map(f -> f.durationMs / 1000.0).toList());
    }
 
    /** The trim range as {start, end} in ms into the clip. */
@@ -568,6 +601,19 @@ public final class ReplayPlayer {
       }
 
       return part;
+   }
+
+   /** The edit was undone or redone: show the camera of the part under the playhead as it is now. */
+   void editRestored() {
+      this.lastSwitch = null;
+      this.manualCamera = false;
+      ReplayEdit.Switch part = this.edit.at(this.clipTimeMs());
+      if (part != null) {
+         this.changedPart(part);
+      } else {
+         this.setSpeed(1.0F);
+         this.setZoom(1.0F);
+      }
    }
 
    /** Saves a change to a camera part and shows it right away. */
@@ -868,8 +914,17 @@ public final class ReplayPlayer {
       } else if (this.paused || this.client.world == null && this.next > 0 && this.timeMs >= this.clipStartMs && this.worldLoaded
          || this.waitingToCapture()) {
          target = this.timeMs;
+      } else if (this.freezeUntilMs > 0L && freezeClock() < this.freezeUntilMs) {
+         target = this.timeMs;
       } else {
+         this.freezeUntilMs = 0L;
          target = this.timeMs + 50L;
+         ReplayEdit.Freeze freeze = this.timeMs >= this.clipStartMs ? this.edit.freezeCrossed(this.timeMs - this.clipStartMs, target - this.clipStartMs) : null;
+         if (freeze != null) {
+            // Stop on the freeze-frame and hold it while the world stands still.
+            target = this.clipStartMs + freeze.timeMs;
+            this.freezeUntilMs = freezeClock() + freeze.durationMs;
+         }
       }
 
       long before = this.timeMs;
@@ -883,7 +938,7 @@ public final class ReplayPlayer {
 
       this.updateStand();
       if (this.client.world != null) {
-         this.client.world.getTickManager().setFrozen(this.paused);
+         this.client.world.getTickManager().setFrozen(this.paused || this.freezeUntilMs > 0L);
          this.client.world.getTickManager().setTickRate(20.0F * this.speed);
       }
 
@@ -1079,7 +1134,7 @@ public final class ReplayPlayer {
          return;
       }
 
-      double t = this.paused ? this.timeMs : this.timeMs - 50.0 + MathHelper.clamp(tickProgress, 0.0F, 1.0F) * 50.0;
+      double t = this.paused || this.freezeUntilMs > 0L ? this.timeMs : this.timeMs - 50.0 + MathHelper.clamp(tickProgress, 0.0F, 1.0F) * 50.0;
       int lo = 0;
       int hi = this.lookTimes.length - 1;
       if (t < this.lookTimes[0] || t - this.lookTimes[hi] > 250.0) {

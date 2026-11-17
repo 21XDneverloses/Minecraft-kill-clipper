@@ -141,6 +141,43 @@ public final class VideoTools {
 
    /** One stretch of the source audio: [startSec, endSec) played at {@code speed}. */
    public record AudioPart(double startSec, double endSec, double speed) {
+      /** A gap of silence {@code seconds} long, for a freeze-frame. */
+      public static AudioPart silence(double seconds) {
+         return new AudioPart(0.0, seconds, 0.0);
+      }
+   }
+
+   /**
+    * Puts a silent gap into the sound at each freeze-frame: {@code at} are positions in the source (seconds, sorted),
+    * {@code lengths} how long each one holds. The part playing at that moment is cut in two around the gap.
+    */
+   public static List<AudioPart> withSilences(List<AudioPart> parts, List<Double> at, List<Double> lengths) {
+      List<AudioPart> out = new ArrayList<>(parts);
+      for (int f = 0; f < at.size(); f++) {
+         double t = at.get(f);
+         for (int i = 0; i < out.size(); i++) {
+            AudioPart part = out.get(i);
+            if (part.speed() <= 0.0 || t <= part.startSec() - 1e-6 || t > part.endSec() + 1e-6) {
+               continue;
+            }
+
+            List<AudioPart> replaced = new ArrayList<>();
+            if (t > part.startSec() + 1e-6) {
+               replaced.add(new AudioPart(part.startSec(), t, part.speed()));
+            }
+
+            replaced.add(AudioPart.silence(lengths.get(f)));
+            if (t < part.endSec() - 1e-6) {
+               replaced.add(new AudioPart(t, part.endSec(), part.speed()));
+            }
+
+            out.remove(i);
+            out.addAll(i, replaced);
+            break;
+         }
+      }
+
+      return out;
    }
 
    /**
@@ -153,19 +190,33 @@ public final class VideoTools {
          return false;
       }
 
-      StringBuilder graph = new StringBuilder("[1:a]asetpts=PTS-STARTPTS");
-      if (parts.size() > 1) {
-         graph.append(",asplit=").append(parts.size());
+      // Parts with speed 0 are silence (a freeze-frame): they take no sound from the clip.
+      int sourced = (int)parts.stream().filter(p -> p.speed() > 0.0).count();
+      StringBuilder graph = new StringBuilder();
+      if (sourced > 0) {
+         graph.append("[1:a]asetpts=PTS-STARTPTS");
+         if (sourced > 1) {
+            graph.append(",asplit=").append(sourced);
+         }
+
+         for (int i = 0; i < sourced; i++) {
+            graph.append("[s").append(i).append(']');
+         }
+
+         graph.append(';');
       }
 
-      for (int i = 0; i < parts.size(); i++) {
-         graph.append("[s").append(i).append(']');
-      }
-
-      graph.append(';');
+      int split = 0;
+      String format = ",aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
       for (int i = 0; i < parts.size(); i++) {
          AudioPart part = parts.get(i);
-         graph.append("[s").append(i).append("]atrim=start=").append(seconds(part.startSec())).append(":end=").append(seconds(Math.max(part.startSec() + 0.001, part.endSec())))
+         if (part.speed() <= 0.0) {
+            graph.append("anullsrc=r=48000:cl=stereo,atrim=duration=").append(seconds(Math.max(0.001, part.endSec() - part.startSec())))
+               .append(",asetpts=PTS-STARTPTS").append(format).append("[a").append(i).append("];");
+            continue;
+         }
+
+         graph.append("[s").append(split++).append("]atrim=start=").append(seconds(part.startSec())).append(":end=").append(seconds(Math.max(part.startSec() + 0.001, part.endSec())))
             .append(",asetpts=PTS-STARTPTS");
          // atempo takes 0.5..100 per step: chain steps for slower speeds (0.25 = 0.5 x 0.5).
          double speed = Math.max(0.125, part.speed());
@@ -178,7 +229,7 @@ public final class VideoTools {
             graph.append(",atempo=").append(String.format(Locale.ROOT, "%.4f", speed));
          }
 
-         graph.append("[a").append(i).append("];");
+         graph.append(format).append("[a").append(i).append("];");
       }
 
       for (int i = 0; i < parts.size(); i++) {
@@ -218,6 +269,21 @@ public final class VideoTools {
       String output = new String(process.getInputStream().readAllBytes());
       process.waitFor(20L, TimeUnit.SECONDS);
       return output.contains("Audio:");
+   }
+
+   /** Saves one small frame of a video as a PNG (160 px wide) for the clip list; tries the start if {@code atSec} is past the end. */
+   public static boolean thumbnail(String ffmpeg, Path video, double atSec, Path output) throws IOException, InterruptedException {
+      Files.createDirectories(output.getParent());
+      for (double at : atSec > 0.0 ? new double[]{atSec, 0.0} : new double[]{0.0}) {
+         Files.deleteIfExists(output);
+         List<String> cmd = List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", seconds(at), "-i", video.toString(),
+            "-frames:v", "1", "-vf", "scale=160:90:force_original_aspect_ratio=increase,crop=160:90", output.toString());
+         if (run(cmd, 30L) && Files.isRegularFile(output) && Files.size(output) > 0L) {
+            return true;
+         }
+      }
+
+      return false;
    }
 
    private static boolean run(List<String> command, long timeoutSeconds) throws IOException, InterruptedException {

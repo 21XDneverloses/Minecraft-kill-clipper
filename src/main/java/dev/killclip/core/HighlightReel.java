@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
  * the last two beats before a kill speed up slightly, and the kill itself lands on the beat.
  */
 public final class HighlightReel {
-   /** Clip names the recorder writes: 2026-11-10_21-04-33_kill.mp4 or ..._3-kill-streak.mp4. */
-   private static final Pattern NAME = Pattern.compile("(\\d{4}-\\d\\d-\\d\\d_\\d\\d-\\d\\d-\\d\\d)_(kill|(\\d+)-kill-streak)\\.[A-Za-z0-9]+");
+   /** Clip names the recorder writes: 2026-11-10_21-04-33_kill.mp4 or ..._3-kill-streak.mp4, plus a title after a rename (not the _vertical copies). */
+   private static final Pattern NAME = Pattern.compile("(\\d{4}-\\d\\d-\\d\\d_\\d\\d-\\d\\d-\\d\\d)_(kill|(\\d+)-kill-streak)(?:_(?!vertical\\.)[^.]*)?\\.[A-Za-z0-9]+");
    private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
    private static final Pattern DURATION = Pattern.compile("Duration: (\\d+):(\\d+):(\\d+(?:\\.\\d+)?)");
    private static final Pattern SIZE = Pattern.compile("Video: .*?[ ,](\\d{2,5})x(\\d{2,5})[ ,\\[]");

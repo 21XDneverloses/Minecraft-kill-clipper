@@ -26,7 +26,8 @@ public final class ClipConfig {
    /** Bumped when a default changes so older config files pick it up. */
    public int configVersion = 0;
    public boolean enabled = true;
-   public boolean feedback = true;
+   /** "Saving clip" / "Clip saved" notices above the hotbar. Off by default: clipping works silently. */
+   public boolean feedback = false;
    public int duplicateWindowMs = 3000;
    public boolean trackHits = true;
    /** Count kill messages in unknown wording when they say you killed an online player. */
@@ -41,6 +42,10 @@ public final class ClipConfig {
    public int resolution = 1080;
    public int quality = 23;
    public String encoder = "libx264";
+   /** Bitrate ceiling in Mbit/s; 0 picks one from the size and frame rate (50 at 1080p 120 fps with H.265). */
+   public int maxBitrateMbps = 0;
+   /** Set once the first-run setup was finished or skipped; it can be opened again from the settings. */
+   public boolean setupDone = false;
    /** Video file type for saved clips. */
    public String fileFormat = "mp4";
    /** Discord webhook URL for "Share to Discord" (kept only in this config file). */
@@ -66,7 +71,7 @@ public final class ClipConfig {
    public static ClipConfig load() throws IOException {
       if (!Files.exists(PATH)) {
          ClipConfig config = new ClipConfig();
-         config.configVersion = 3;
+         config.configVersion = 5;
          config.save();
          return config;
       } else {
@@ -95,6 +100,20 @@ public final class ClipConfig {
             // 1.5.0: the buffer sizes itself to the clip settings.
             config.bufferSeconds = 0;
             config.configVersion = 3;
+            upgraded = true;
+         }
+
+         if (config.configVersion < 4) {
+            // 1.15.0: everyone sees the first-run setup once (encoder check, folder, keys).
+            config.setupDone = false;
+            config.configVersion = 4;
+            upgraded = true;
+         }
+
+         if (config.configVersion < 5) {
+            // 1.15.0: clipping is silent by default; no "saving"/"saved" notices unless turned back on.
+            config.feedback = false;
+            config.configVersion = 5;
             upgraded = true;
          }
 
@@ -128,6 +147,7 @@ public final class ClipConfig {
       require(this.fps >= 15 && this.fps <= 120, "fps must be 15..120");
       require(this.resolution == 0 || this.resolution >= 240 && this.resolution <= 2160, "resolution must be 0 (native) or 240..2160");
       require(this.quality >= 0 && this.quality <= 51, "quality must be 0..51 (lower is better)");
+      require(this.maxBitrateMbps >= 0 && this.maxBitrateMbps <= 150, "maxBitrateMbps must be 0 (auto) or 1..150");
       require(this.encoder != null && ENCODERS.contains(this.encoder), "encoder must be one of " + ENCODERS);
       require(this.fileFormat != null && FORMATS.contains(this.fileFormat), "fileFormat must be one of " + FORMATS);
       require(this.bufferSeconds == 0 || this.bufferSeconds >= 10 && this.bufferSeconds <= 300, "bufferSeconds must be 0 (auto) or 10..300");
