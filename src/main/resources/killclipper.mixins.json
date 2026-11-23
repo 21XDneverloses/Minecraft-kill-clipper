@@ -14,7 +14,9 @@
     "HandSwingMixin",
     "HeldItemRendererMixin",
     "InGameHudMixin",
-    "PlayerDeathStatusMixin"
+    "PlayerDeathStatusMixin",
+    "CameraMixin",
+    "EntityRenderManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

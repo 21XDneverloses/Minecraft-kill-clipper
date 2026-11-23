@@ -677,6 +677,8 @@ public final class ReplayPlayer {
       }
 
       exportStatus = "";
+      // The "E opens the editor" hint must not end up in the video.
+      this.client.inGameHud.setOverlayMessage(Text.empty(), false);
       this.exportFormat = format;
       this.exportVertical = vertical;
       this.exportStartRealMs = 0L;
@@ -1112,6 +1114,16 @@ public final class ReplayPlayer {
 
          this.stand = null;
       }
+   }
+
+   /** True for the stand-in that plays you in third person and spectator. */
+   public boolean isStand(net.minecraft.entity.Entity entity) {
+      return entity != null && entity == this.stand;
+   }
+
+   /** The third-person camera is following you (the stand-in or your player), so {@link ReplayCamera} may steer it. */
+   public boolean guidesCamera(net.minecraft.entity.Entity focused) {
+      return !this.closed && this.mode == CameraMode.THIRD_PERSON && focused != null && (focused == this.stand || focused == this.client.player);
    }
 
    /** The entity the third person and spectator cameras show: the stand-in, or your player before it exists. */
