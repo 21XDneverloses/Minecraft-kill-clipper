@@ -126,6 +126,8 @@ public final class ReplayPlayer {
    /** When a freeze-frame ends (export frame time while exporting, else real time); 0 when none is holding. */
    private long freezeUntilMs;
    private float speed = 1.0F;
+   /** Moves the replay further per tick above 1x, since the game never ticks faster than 20 times a second. */
+   private final dev.killclip.core.ReplayClock clock = new dev.killclip.core.ReplayClock();
    private CameraMode mode = CameraMode.FIRST_PERSON;
    private MarkerEntity freeCamera;
    private final boolean[] keysDown = new boolean[GLFW.GLFW_KEY_LAST + 1];
@@ -445,7 +447,7 @@ public final class ReplayPlayer {
    public void setSpeed(float speed) {
       this.speed = MathHelper.clamp(speed, 0.125F, 4.0F);
       if (this.client.world != null) {
-         this.client.world.getTickManager().setTickRate(20.0F * this.speed);
+         this.client.world.getTickManager().setTickRate(dev.killclip.core.ReplayClock.tickRate(this.speed));
       }
    }
 
@@ -677,6 +679,8 @@ public final class ReplayPlayer {
       }
 
       exportStatus = "";
+      // The "E opens the editor" hint must not end up in the video.
+      this.client.inGameHud.setOverlayMessage(Text.empty(), false);
       this.exportFormat = format;
       this.exportVertical = vertical;
       this.exportStartRealMs = 0L;
@@ -918,7 +922,7 @@ public final class ReplayPlayer {
          target = this.timeMs;
       } else {
          this.freezeUntilMs = 0L;
-         target = this.timeMs + 50L;
+         target = this.timeMs + this.clock.step(this.speed);
          ReplayEdit.Freeze freeze = this.timeMs >= this.clipStartMs ? this.edit.freezeCrossed(this.timeMs - this.clipStartMs, target - this.clipStartMs) : null;
          if (freeze != null) {
             // Stop on the freeze-frame and hold it while the world stands still.
@@ -939,7 +943,7 @@ public final class ReplayPlayer {
       this.updateStand();
       if (this.client.world != null) {
          this.client.world.getTickManager().setFrozen(this.paused || this.freezeUntilMs > 0L);
-         this.client.world.getTickManager().setTickRate(20.0F * this.speed);
+         this.client.world.getTickManager().setTickRate(dev.killclip.core.ReplayClock.tickRate(this.speed));
       }
 
       ClientPlayerEntity player = this.client.player;
@@ -1134,7 +1138,7 @@ public final class ReplayPlayer {
          return;
       }
 
-      double t = this.paused || this.freezeUntilMs > 0L ? this.timeMs : this.timeMs - 50.0 + MathHelper.clamp(tickProgress, 0.0F, 1.0F) * 50.0;
+      double t = this.paused || this.freezeUntilMs > 0L ? this.timeMs : this.timeMs - this.clock.lastStepMs() + MathHelper.clamp(tickProgress, 0.0F, 1.0F) * this.clock.lastStepMs();
       int lo = 0;
       int hi = this.lookTimes.length - 1;
       if (t < this.lookTimes[0] || t - this.lookTimes[hi] > 250.0) {
