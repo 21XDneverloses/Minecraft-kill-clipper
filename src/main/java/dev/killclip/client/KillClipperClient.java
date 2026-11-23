@@ -187,7 +187,7 @@ public final class KillClipperClient implements ClientModInitializer {
       ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
          this.reset();
          this.refreshVanillaPatterns();
-         if (ReplayPlayer.playing() && !ReplayPlayer.active().exporting()) {
+         if (ReplayPlayer.playing() && !ReplayPlayer.active().exporting() && ReplayPlayer.active().autoShot == null) {
             // A short hint above the hotbar instead of a chat line.
             client.inGameHud.setOverlayMessage(Text.literal("Replay: E opens the editor, Esc → Disconnect leaves"), false);
          }
