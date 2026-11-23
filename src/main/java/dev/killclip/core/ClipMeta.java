@@ -62,6 +62,15 @@ public final class ClipMeta {
    }
 
    public static void write(Path clip, List<Kill> kills) throws IOException {
+      write(clip, kills, null);
+   }
+
+   /**
+    * Saves the kills and the stretches of the video where the game showed no fight ({@code away}: loading and
+    * connecting screens, a world switch), in the video's seconds; null if they weren't tracked. Older readers skip
+    * the new lines.
+    */
+   public static void write(Path clip, List<Kill> kills, List<LoadingScreens.Span> away) throws IOException {
       Path file = fileFor(clip);
       Path dir = file.getParent();
       if (!Files.isDirectory(dir)) {
@@ -78,7 +87,57 @@ public final class ClipMeta {
          text.append(String.format(Locale.ROOT, "kill %.3f %s %.1f %.1f%n", kill.at(), kill.cause().name().toLowerCase(Locale.ROOT), kill.health(), kill.distance()));
       }
 
+      if (away != null) {
+         // Marks a clip whose loading screens were tracked, even if it had none.
+         text.append("screens tracked\n");
+         for (LoadingScreens.Span span : away) {
+            text.append(String.format(Locale.ROOT, "away %.3f %.3f%n", span.from(), span.to()));
+         }
+      }
+
       Files.writeString(file, text);
+   }
+
+   /** The stretches of a clip where the game showed no fight; null for clips from before this was tracked. */
+   public static List<LoadingScreens.Span> readAway(Path clip) {
+      List<LoadingScreens.Span> spans = new ArrayList<>();
+      boolean tracked = false;
+      for (String[] parts : lines(clip)) {
+         tracked |= parts.length >= 2 && parts[0].equals("screens") && parts[1].equals("tracked");
+         if (parts.length >= 3 && parts[0].equals("away")) {
+            try {
+               spans.add(new LoadingScreens.Span(Double.parseDouble(parts[1]), Double.parseDouble(parts[2])));
+            } catch (NumberFormatException ignored) {
+               // Skip a damaged line.
+            }
+         }
+      }
+
+      return tracked ? LoadingScreens.merge(spans) : null;
+   }
+
+   /** The lines of a clip's meta file split into words, without the header; empty if there is none. */
+   private static List<String[]> lines(Path clip) {
+      Path file = fileFor(clip);
+      List<String[]> out = new ArrayList<>();
+      if (!Files.isRegularFile(file)) {
+         return out;
+      }
+
+      try {
+         List<String> lines = Files.readAllLines(file);
+         if (lines.isEmpty() || !lines.get(0).strip().equals(HEADER)) {
+            return out;
+         }
+
+         for (String line : lines.subList(1, lines.size())) {
+            out.add(line.strip().split("\\s+"));
+         }
+      } catch (IOException ignored) {
+         return new ArrayList<>();
+      }
+
+      return out;
    }
 
    /** The kills saved for a clip, oldest first; empty for clips from before this was saved, or an unreadable file. */

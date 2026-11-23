@@ -103,6 +103,9 @@ public final class KillClipperClient implements ClientModInitializer {
    private String captureHost = "";
    private int clipsSaved;
    private String worldIdentity = "";
+   /** When the game showed loading screens or switched worlds, so the highlight reel can leave them out. */
+   private final dev.killclip.core.LoadingScreens.Tracker screens = new dev.killclip.core.LoadingScreens.Tracker();
+   private net.minecraft.client.world.ClientWorld lastWorld;
    private final Map<String, Long> recentPlayers = new HashMap<>();
    private long nextPlayerRefresh;
    private boolean started;
@@ -236,6 +239,7 @@ public final class KillClipperClient implements ClientModInitializer {
          return ActionResult.PASS;
       });
       ClientTickEvents.END_CLIENT_TICK.register(client -> {
+         this.trackScreens(client);
          if (this.captureUntil != 0L && nowMs() >= this.captureUntil) {
             this.finishCapture();
          }
@@ -866,7 +870,7 @@ public final class KillClipperClient implements ClientModInitializer {
          }
 
          LOGGER.info("Saved clip {}", file);
-         this.saveMeta(file, fromMs, videoLead, kills);
+         this.saveMeta(file, fromMs, toMs, videoLead, kills);
          this.saveReplay(replay, fromMs, toMs, videoLead, file);
          ClipStorage.enforceLater();
       }, error -> {
@@ -1020,8 +1024,35 @@ public final class KillClipperClient implements ClientModInitializer {
       }
    }
 
+   /** Notes loading screens and world switches for the highlight reel. */
+   private void trackScreens(MinecraftClient client) {
+      if (ReplayPlayer.playing()) {
+         return;
+      }
+
+      net.minecraft.client.gui.screen.Screen screen = client.currentScreen;
+      boolean away = client.world == null || client.player == null
+         || screen instanceof net.minecraft.client.gui.screen.multiplayer.ConnectScreen
+         || screen instanceof net.minecraft.client.gui.screen.world.LevelLoadingScreen
+         || screen instanceof net.minecraft.client.gui.screen.ProgressScreen
+         || screen instanceof net.minecraft.client.gui.screen.MessageScreen
+         || screen instanceof net.minecraft.client.gui.screen.ReconfiguringScreen
+         || screen instanceof net.minecraft.client.gui.screen.DisconnectedScreen
+         || screen instanceof net.minecraft.client.gui.screen.DeathScreen;
+      long now = nowMs();
+      if (client.world != null && this.lastWorld != null && client.world != this.lastWorld) {
+         this.screens.cut(now);
+      }
+
+      if (client.world != null) {
+         this.lastWorld = client.world;
+      }
+
+      this.screens.update(now, away);
+   }
+
    /** Saves when each kill lands in the clip's video and how it was made, for the highlight reel. */
-   private void saveMeta(String videoFile, long fromMs, long videoLead, List<Moment> kills) {
+   private void saveMeta(String videoFile, long fromMs, long toMs, long videoLead, List<Moment> kills) {
       if (kills.isEmpty()) {
          return;
       }
@@ -1032,7 +1063,7 @@ public final class KillClipperClient implements ClientModInitializer {
       }
 
       try {
-         dev.killclip.core.ClipMeta.write(this.config.clipsDir().resolve(videoFile), details);
+         dev.killclip.core.ClipMeta.write(this.config.clipsDir().resolve(videoFile), details, this.screens.between(fromMs, toMs, videoLead));
       } catch (Exception e) {
          LOGGER.warn("Could not save the kill details of {}: {}", videoFile, e.getMessage());
       }

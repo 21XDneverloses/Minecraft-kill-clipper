@@ -82,6 +82,8 @@ public final class BeatDetector {
          return null;
       }
 
+      period = doubleTime(onset, period);
+
       double phase = phase(onset, period);
       // Of the four beats in a bar, the bar line is the one with the strongest hits (kick and crash land there).
       double bestScore = -1.0;
@@ -290,6 +292,30 @@ public final class BeatDetector {
       return comb(onset, lag) / beats * Math.exp(-0.5 * octaves * octaves / 0.6);
    }
 
+   /**
+    * Fast songs (drum and bass, phonk, hardstyle, 150 to 180 BPM) fit half their tempo about as well as their real one,
+    * so a slow result is checked: if the half-way points between its beats hit nearly as hard as the beats, the song
+    * is really twice as fast. A slow song's off-beats (a hi-hat, an echo) are much weaker than its beats.
+    */
+   static double doubleTime(float[] onset, double period) {
+      double bpm = 60.0 * FPS / period;
+      if (bpm >= 95.0 || bpm * 2.0 > 200.0) {
+         return period;
+      }
+
+      double phase = phase(onset, period);
+      double on = 0.0;
+      double off = 0.0;
+      int n = 0;
+      for (double t = phase; t + period / 2.0 < onset.length - 1; t += period) {
+         on += near(onset, t);
+         off += near(onset, t + period / 2.0);
+         n++;
+      }
+
+      return n > 4 && on > 0.0 && off >= 0.7 * on ? period / 2.0 : period;
+   }
+
    /** How well a beat of {@code period} frames fits, at its best phase. */
    private static double comb(float[] onset, double period) {
       double best = 0.0;
@@ -322,6 +348,11 @@ public final class BeatDetector {
       }
 
       return bestPhase;
+   }
+
+   /** The strongest onset within a frame of {@code t}: a hit a little early or late still counts. */
+   private static double near(float[] values, double t) {
+      return Math.max(sample(values, t), Math.max(sample(values, t - 1.0), sample(values, t + 1.0)));
    }
 
    private static double sample(float[] values, double t) {

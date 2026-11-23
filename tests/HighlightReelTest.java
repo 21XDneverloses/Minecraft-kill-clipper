@@ -5,6 +5,8 @@ import dev.killclip.core.HighlightReel.Clip;
 import dev.killclip.core.HighlightReel.Piece;
 import dev.killclip.core.HighlightReel.Role;
 import dev.killclip.core.HighlightReel.Segment;
+import dev.killclip.core.LoadingScreens;
+import dev.killclip.core.LoadingScreens.Span;
 import dev.killclip.core.ReelMusic;
 import dev.killclip.core.ReelText;
 import dev.killclip.core.VideoTools;
@@ -24,6 +26,9 @@ public class HighlightReelTest {
       check(ReelMusic.file(dir).equals(music), "music is reused");
       beats(dir, music);
       segments();
+      pace();
+      loading(dir);
+      filling();
       meta(dir);
       reels(dir, music);
       System.out.println("HighlightReelTest passed");
@@ -138,6 +143,189 @@ public class HighlightReelTest {
       check(detected.start() >= first - 0.05, "starts after the quiet intro: " + detected.start());
       double bars = (detected.start() - first) / (4 * beat);
       check(Math.abs(bars - Math.round(bars)) < 0.05, "starts on a bar line: " + detected.start());
+
+      // A fast song (drum and bass style, 172 BPM: kick and snare taking turns on every beat) is found at its real
+      // tempo, not half of it; a slow 84 BPM song with quiet off-beat hats stays slow.
+      BeatDetector.Grid fast = BeatDetector.detect(drums(rate, 172.0, true), rate);
+      check(fast != null && Math.abs(fast.bpm() - 172.0) < 2.0, "172 BPM song: " + (fast == null ? null : fast.bpm()));
+      check(HighlightReel.pace(fast).name().equals("fast"), "fast song gets fast cuts");
+      BeatDetector.Grid chill = BeatDetector.detect(drums(rate, 84.0, false), rate);
+      check(chill != null && Math.abs(chill.bpm() - 84.0) < 1.5, "84 BPM song: " + (chill == null ? null : chill.bpm()));
+      check(HighlightReel.pace(chill).name().equals("slow"), "slow song gets slow cuts");
+   }
+
+   /**
+    * 40 s of drums at {@code bpm}. {@code busy}: a kick or a snare on every beat, as loud as each other (fast music
+    * that fits half its tempo too); otherwise a kick on the beat and a quiet hat between.
+    */
+   private static float[] drums(int rate, double bpm, boolean busy) {
+      double beat = 60.0 / bpm;
+      float[] song = new float[rate * 40];
+      java.util.Random random = new java.util.Random(9);
+      int n = 0;
+      for (double t = 0.5; t < 39.5; t += beat, n++) {
+         int at = (int)(t * rate);
+         if (!busy || n % 2 == 0) {
+            for (int i = 0; i < rate / 5 && at + i < song.length; i++) {
+               double s = i / (double)rate;
+               song[at + i] += (float)(Math.sin(2 * Math.PI * (50 + 120 * Math.exp(-s / 0.03)) * s) * Math.exp(-s / 0.08) * (n % 4 == 0 ? 0.9 : 0.7));
+            }
+         } else {
+            for (int i = 0; i < rate / 8 && at + i < song.length; i++) {
+               song[at + i] += (float)((random.nextFloat() * 2 - 1) * 0.7 * Math.exp(-i / (rate * 0.04)));
+            }
+         }
+
+         int hat = (int)((t + beat / 2) * rate);
+         for (int i = 0; i < rate / 30 && hat + i < song.length; i++) {
+            song[hat + i] += (float)((random.nextFloat() * 2 - 1) * (busy ? 0.25 : 0.1) * Math.exp(-i / (rate * 0.01)));
+         }
+      }
+
+      return song;
+   }
+
+   /** Fast music cuts quicker and slow music lets clips run: the same kill takes less reel time at 170 BPM than at 80. */
+   private static void pace() {
+      HighlightReel.Info info = new HighlightReel.Info(20.0, 1920, 1080, true);
+      Clip clip = new Clip(Path.of("a.mp4"), 0, 1, List.of(kill(15.0, ClipMeta.Cause.MELEE, 20, 3)));
+      double[] lengths = new double[3];
+      double[] bpms = {170.0, 128.0, 80.0};
+      for (int i = 0; i < 3; i++) {
+         BeatDetector.Grid grid = new BeatDetector.Grid(60.0 / bpms[i], 0, 0);
+         Segment segment = HighlightReel.segment(clip, info, 10.0, 5.0, grid, Role.NORMAL, 0.0);
+         lengths[i] = segment.length();
+         double units = segment.length() / HighlightReel.unit(grid);
+         check(Math.abs(units - Math.round(units)) < 1e-6, bpms[i] + " BPM clip is whole units: " + units);
+         check(Math.abs(segment.popups().get(0).at() / HighlightReel.unit(grid) - Math.round(segment.popups().get(0).at() / HighlightReel.unit(grid))) < 1e-6,
+            bpms[i] + " BPM kill on a cut line");
+      }
+
+      check(lengths[0] < lengths[1] - 1.0 && lengths[1] < lengths[2] - 1.0, "cut length follows the tempo: " + java.util.Arrays.toString(lengths));
+      check(lengths[0] <= 3.5, "fast cuts are short: " + lengths[0]);
+   }
+
+   /** Loading screens and world switches stay out of the reel. */
+   private static void loading(Path dir) throws Exception {
+      BeatDetector.Grid grid = BeatDetector.builtIn();
+      double t = HighlightReel.transitionSeconds(HighlightReel.Transition.FADE, grid);
+      double unit = HighlightReel.unit(grid);
+      HighlightReel.Info info = new HighlightReel.Info(12.0, 1920, 1080, true);
+      // Won at 8 s, then sent to the lobby 0.8 s later: the loading screen runs from 8.8 s to the end.
+      Clip won = new Clip(Path.of("w.mp4"), 0, 1, List.of(kill(8.0, ClipMeta.Cause.MELEE, 20, 3)), List.of(new Span(8.55, 12.0)));
+      for (Role role : Role.values()) {
+         Segment segment = HighlightReel.segment(won, info, 10.0, 4.0, grid, role, t);
+         check(segment.pieces().stream().allMatch(p -> p.start() + p.length() <= 8.55 + 1e-6), role + " stops before the lobby: " + segment.pieces());
+         double units = (segment.length() - t) / unit;
+         check(Math.abs(units - Math.round(units)) < 1e-6, role + " still whole units: " + units);
+         check(segment.popups().size() == 1 && segment.popups().get(0).main().equals("KILL"), role + " kill still shown");
+      }
+
+      // Joined the arena 2 s before the kill: nothing from before the join.
+      Clip joined = new Clip(Path.of("j.mp4"), 0, 1, List.of(kill(7.0, ClipMeta.Cause.MELEE, 20, 3)), List.of(new Span(0.0, 5.0)));
+      Segment segment = HighlightReel.segment(joined, info, 10.0, 4.0, grid, Role.NORMAL, t);
+      check(segment.pieces().stream().allMatch(p -> p.start() >= 5.0 - 1e-6), "starts after the join: " + segment.pieces());
+      check(segment.popups().size() == 1, "kill still shown after a late join");
+
+      // A span over the kill itself is ignored; one far away changes nothing.
+      Clip plain = new Clip(Path.of("p.mp4"), 0, 1, List.of(kill(7.0, ClipMeta.Cause.MELEE, 20, 3)), List.of());
+      Clip far = new Clip(Path.of("p.mp4"), 0, 1, List.of(kill(7.0, ClipMeta.Cause.MELEE, 20, 3)), List.of(new Span(0.0, 0.5), new Span(6.9, 7.1)));
+      check(HighlightReel.segment(far, info, 10.0, 4.0, grid, Role.NORMAL, t).pieces().equals(HighlightReel.segment(plain, info, 10.0, 4.0, grid, Role.NORMAL, t).pieces()),
+         "spans far away or over the kill change nothing");
+
+      // Old clips are checked by picture around the kills; tracked clips aren't.
+      double[] window = HighlightReel.scanWindow(new Clip(Path.of("o.mp4"), 0, 1), info, 10.0, 4.0, grid);
+      check(window[0] < 8.0 - 2 * unit && window[0] + window[1] >= 12.0 - 1e-6, "scan window covers the lead-up and the end: " + java.util.Arrays.toString(window));
+      check(HighlightReel.scanWindow(plain, info, 10.0, 4.0, grid)[1] == 0.0, "tracked clips need no scan");
+
+      // Spans from frames: single blips are ignored, runs are widened and merged.
+      List<Span> spans = LoadingScreens.spans(new boolean[]{false, true, false, false, true, true, true, false, false, false, false, false, false, true, true}, 10.0, 2.0);
+      check(spans.size() == 2 && Math.abs(spans.get(0).from() - 2.15) < 1e-6 && Math.abs(spans.get(0).to() - 2.95) < 1e-6
+         && Math.abs(spans.get(1).from() - 3.05) < 1e-6, "spans: " + spans);
+      check(LoadingScreens.spans(new boolean[]{true, true, false, true, true}, 10.0, 0.0).size() == 1, "close spans merge");
+      double[] clear = LoadingScreens.clear(List.of(new Span(0, 2), new Span(3, 4), new Span(9, 10), new Span(11, 12)), 5.0, 6.0, 12.0);
+      check(clear[0] == 4.0 && clear[1] == 9.0, "clear stretch: " + java.util.Arrays.toString(clear));
+
+      // The recorder's tracker: a loading screen and a quick world switch, in the video's seconds.
+      LoadingScreens.Tracker tracker = new LoadingScreens.Tracker();
+      tracker.update(10_000L, false);
+      tracker.update(14_000L, true);
+      tracker.update(15_000L, false);
+      tracker.cut(18_000L);
+      List<Span> away = tracker.between(10_000L, 20_000L, 500L);
+      check(away.size() == 2 && Math.abs(away.get(0).from() - 4.25) < 1e-6 && Math.abs(away.get(0).to() - 6.25) < 1e-6
+         && Math.abs(away.get(1).from() - 8.25) < 1e-6 && Math.abs(away.get(1).to() - 9.25) < 1e-6, "tracked spans: " + away);
+      tracker.update(19_000L, true);
+      List<Span> open = tracker.between(10_000L, 20_000L, 0L);
+      check(Math.abs(open.getLast().to() - 10.0) < 1e-6, "a loading screen still showing runs to the clip's end: " + open);
+
+      // The picture check: game-like detail passes, a blurred menu with a line of text and black frames don't.
+      byte[] busy = new byte[160 * 90];
+      byte[] flat = new byte[160 * 90];
+      java.util.Random random = new java.util.Random(3);
+      for (int i = 0; i < busy.length; i++) {
+         int x = i % 160;
+         int y = i / 160;
+         busy[i] = (byte)(((x / 4 + y / 4) % 2 == 0 ? 60 : 140) + random.nextInt(30));
+         flat[i] = (byte)(70 + x / 4 + ((y == 45 && x > 50 && x < 110 && x % 3 == 0) ? 120 : 0));
+      }
+
+      check(!LoadingScreens.loading(busy, 160, 90), "game picture is not loading: " + LoadingScreens.detail(busy, 160, 90));
+      check(LoadingScreens.loading(flat, 160, 90), "blurred menu is loading: " + LoadingScreens.detail(flat, 160, 90));
+      check(LoadingScreens.loading(new byte[160 * 90], 160, 90), "black is loading");
+
+      // On a real video: 4 s of busy test picture, 1.5 s of a plain dark screen with a line of text, 2 s of picture.
+      Path video = dir.resolve("2026-11-10_20-00-00_kill.mp4");
+      check(new ProcessBuilder("ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:d=4", "-f", "lavfi", "-i",
+         "color=c=0x303848:size=640x360:rate=30:d=1.5", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:d=2", "-filter_complex",
+         "[1:v]drawbox=x=250:y=175:w=140:h=6:color=white:t=fill[l];[0:v][l][2:v]concat=n=3:v=1:a=0", "-c:v", "libx264", "-preset", "ultrafast",
+         "-pix_fmt", "yuv420p", video.toString()).inheritIO().start().waitFor() == 0, "make loading video");
+      List<Span> found = LoadingScreens.scan("ffmpeg", video, 1.0, 6.5);
+      check(found.size() == 1 && Math.abs(found.get(0).from() - 3.75) < 0.2 && Math.abs(found.get(0).to() - 5.75) < 0.2, "loading screen found in the video: " + found);
+      Files.delete(video);
+   }
+
+   /** With your own song, an automatic pick fills the song with every different fight, and streaks are spread out. */
+   private static void filling() {
+      List<Clip> clips = new ArrayList<>();
+      for (int i = 0; i < 30; i++) {
+         clips.add(new Clip(Path.of("f" + i + ".mp4"), i * 60_000L, i % 6 == 0 ? 2 : 1));
+      }
+
+      BeatDetector.Grid grid = BeatDetector.builtIn();
+      int usual = HighlightReel.pick(clips, 0).size();
+      List<Clip> song = HighlightReel.pick(clips, 0, 150.0, grid);
+      double total = song.stream().mapToDouble(c -> HighlightReel.estimate(c, grid)).sum();
+      check(song.size() > usual && total <= 150.0 + 1e-6 && total > 150.0 - 10.0, "fills a 150 s song: " + song.size() + " clips, " + total + " s vs " + usual);
+      check(song.stream().map(Clip::file).distinct().count() == song.size(), "no clip twice");
+      check(HighlightReel.pick(clips, 0, 600.0, grid).size() == 30, "a long song takes every clip");
+
+      // Streaks spread through the middle instead of bunching up.
+      List<Clip> middle = new ArrayList<>();
+      for (int i = 0; i < 8; i++) {
+         middle.add(new Clip(Path.of("m" + i + ".mp4"), i * 60_000L, i >= 6 ? 3 : 1));
+      }
+
+      List<Clip> order = HighlightReel.order(middle);
+      List<Integer> streakAt = new ArrayList<>();
+      for (int i = 1; i < order.size() - 1; i++) {
+         if (order.get(i).kills() > 1) {
+            streakAt.add(i);
+         }
+      }
+
+      check(order.get(0).kills() == 3 && order.getLast().kills() == 3, "best streaks open and close");
+      middle.add(new Clip(Path.of("m8.mp4"), 8 * 60_000L, 2));
+      middle.add(new Clip(Path.of("m9.mp4"), 9 * 60_000L, 2));
+      order = HighlightReel.order(middle);
+      streakAt.clear();
+      for (int i = 1; i < order.size() - 1; i++) {
+         if (order.get(i).kills() > 1) {
+            streakAt.add(i);
+         }
+      }
+
+      check(streakAt.size() == 2 && streakAt.get(0) >= 2 && streakAt.get(1) - streakAt.get(0) >= 3, "streaks spread out: " + streakAt + " " + order);
    }
 
    private static void segments() {
@@ -179,9 +367,11 @@ public class HighlightReelTest {
       check(old.popups().size() == 1 && old.popups().get(0).main().equals("QUAD KILL"), "old streak popup");
       check(old.length() - t <= 8 * unit + 1e-6, "at most eight units");
 
-      // A slow song is cut in half bars.
+      // A slow song is cut in whole bars (half bars only when a bar is very long); a fast one in half bars.
       BeatDetector.Grid slow = new BeatDetector.Grid(60.0 / 80.0, 0, 0);
-      check(Math.abs(HighlightReel.unit(slow) - 1.5) < 1e-9, "half bars for slow songs");
+      check(Math.abs(HighlightReel.unit(slow) - 3.0) < 1e-9, "whole bars for slow songs");
+      check(Math.abs(HighlightReel.unit(new BeatDetector.Grid(1.0, 0, 0)) - 2.0) < 1e-9, "half bars for very slow songs");
+      check(Math.abs(HighlightReel.unit(new BeatDetector.Grid(60.0 / 160.0, 0, 0)) - 0.75) < 1e-9, "half bars for fast songs");
 
       // Cuts land on bars: segment offsets are whole units.
       List<Segment> three = List.of(single, streak, finale);
@@ -202,6 +392,12 @@ public class HighlightReelTest {
       List<ClipMeta.Kill> read = ClipMeta.read(clip);
       check(read.size() == 2 && read.get(0).at() == 1.0 && read.get(0).cause() == ClipMeta.Cause.RANGED && read.get(1).health() == 7.5F, "meta round trip: " + read);
       check(ClipMeta.read(dir.resolve("none.mp4")).isEmpty(), "no meta");
+      check(ClipMeta.readAway(clip) == null, "old meta has no loading screen tracking");
+      ClipMeta.write(clip, read, List.of(new Span(9.0, 12.5), new Span(0.0, 1.25)));
+      List<Span> away = ClipMeta.readAway(clip);
+      check(away.size() == 2 && away.get(0).from() == 0.0 && away.get(1).to() == 12.5 && ClipMeta.read(clip).size() == 2, "away round trip: " + away);
+      ClipMeta.write(clip, read, List.of());
+      check(ClipMeta.readAway(clip) != null && ClipMeta.readAway(clip).isEmpty(), "tracked with no loading screens");
       check(ClipMeta.causeFromText("Steve was blown up by Alex using End Crystal") == ClipMeta.Cause.EXPLOSION, "crystal message");
       check(ClipMeta.causeFromText("Steve was shot by Alex") == ClipMeta.Cause.RANGED, "bow message");
       check(ClipMeta.causeFromText("Steve was slain by Alex") == ClipMeta.Cause.OTHER, "melee message");
