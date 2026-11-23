@@ -3,6 +3,7 @@ package dev.killclip.client;
 import dev.killclip.core.BeatDetector;
 import dev.killclip.core.ClipMeta;
 import dev.killclip.core.HighlightReel;
+import dev.killclip.core.LoadingScreens;
 import dev.killclip.core.ReelMusic;
 import dev.killclip.core.ReelText;
 import dev.killclip.core.VideoTools;
@@ -50,6 +51,8 @@ public final class HighlightReelScreen extends FlatScreen {
    /** Instant replays are filmed for this many of the best clips. */
    private static final int MAX_REPLAYS = 2;
    private static final int ROW = 11;
+   /** An automatic pick fills your own song, up to this long. */
+   private static final double MAX_FILL_SECONDS = 180.0;
 
    private enum Music {
       BEAT("Built-in beat"), OWN("Your own file"), NONE("None");
@@ -86,6 +89,22 @@ public final class HighlightReelScreen extends FlatScreen {
    private static volatile boolean busy;
    private static volatile double progress;
    private static volatile String status = "";
+   /** The picked clips were moved, removed or swapped by hand, so they aren't re-picked on their own. */
+   private static boolean planEdited;
+   /** What was found in your own song: its beat and length, read once per file. */
+   private static volatile Song song;
+   private static volatile Path songReading;
+
+   private record Song(Path file, long modified, BeatDetector.Grid grid, double seconds) {
+      boolean matches(Path other) {
+         return other != null && other.equals(this.file) && HighlightReelScreen.modified(other) == this.modified;
+      }
+
+      /** The reel length that uses the song from its first full bar to its end. */
+      double fill() {
+         return Math.max(20.0, Math.min(MAX_FILL_SECONDS, this.seconds - this.grid.start()));
+      }
+   }
 
    private final Screen parent;
    private int listTop;
@@ -117,7 +136,9 @@ public final class HighlightReelScreen extends FlatScreen {
    private static void choose() {
       try {
          candidates = HighlightReel.inRange(HighlightReel.scan(KillClipperClient.instance().settings().clipsDir()), range, System.currentTimeMillis());
-         plan = new ArrayList<>(HighlightReel.pick(candidates, SIZES[size]));
+         Song known = ownSong();
+         plan = new ArrayList<>(known == null ? HighlightReel.pick(candidates, SIZES[size])
+            : HighlightReel.pick(candidates, SIZES[size], known.fill(), known.grid()));
       } catch (Exception e) {
          candidates = List.of();
          plan = new ArrayList<>();
@@ -125,6 +146,72 @@ public final class HighlightReelScreen extends FlatScreen {
       }
 
       selected = -1;
+      planEdited = false;
+   }
+
+   /** Your own song's beat and length, if it is the music and has been read. */
+   private static Song ownSong() {
+      Song known = song;
+      return music == Music.OWN && known != null && known.matches(musicFile()) ? known : null;
+   }
+
+   private static long modified(Path file) {
+      try {
+         return Files.getLastModifiedTime(file).toMillis();
+      } catch (IOException e) {
+         return -1L;
+      }
+   }
+
+   /**
+    * Reads your own song in the background (its tempo, bar lines and length) as soon as it is chosen, so the list can
+    * be filled to the song's length and Make doesn't wait. Picks the clips again when done, unless you changed them.
+    */
+   private static void readSong() {
+      Path file = musicFile();
+      String ffmpeg = KillClipperClient.instance().ffmpeg();
+      if (music != Music.OWN || file == null || ffmpeg == null || !Files.isRegularFile(file) || file.equals(songReading)
+         || song != null && song.matches(file)) {
+         return;
+      }
+
+      songReading = file;
+      CompletableFuture.runAsync(() -> {
+         Song read = analyse(ffmpeg, file);
+         MinecraftClient.getInstance().execute(() -> {
+            songReading = null;
+            song = read;
+            if (!planEdited && !busy()) {
+               choose();
+            }
+
+            if (MinecraftClient.getInstance().currentScreen instanceof HighlightReelScreen screen) {
+               screen.clearAndInit();
+            }
+         });
+      });
+   }
+
+   private static Song analyse(String ffmpeg, Path file) {
+      BeatDetector.Grid grid = null;
+      double seconds = 0.0;
+      try {
+         grid = BeatDetector.detect(ffmpeg, file);
+         seconds = VideoTools.duration(ffmpeg, file);
+      } catch (Exception e) {
+         KillClipperClient.LOGGER.warn("Highlight reel: could not read {}: {}", file.getFileName(), e.getMessage());
+      }
+
+      if (grid == null) {
+         KillClipperClient.LOGGER.info("Highlight reel: no steady beat found in {}; cutting at 128 BPM", file.getFileName());
+         grid = BeatDetector.builtIn();
+      } else {
+         KillClipperClient.LOGGER.info("Highlight reel: {} is {} BPM ({} cuts), first bar at {} s, starting at {} s, {} s long", file.getFileName(),
+            String.format(Locale.ROOT, "%.1f", grid.bpm()), HighlightReel.pace(grid).name(), String.format(Locale.ROOT, "%.2f", grid.downbeat()),
+            String.format(Locale.ROOT, "%.2f", grid.start()), String.format(Locale.ROOT, "%.1f", seconds));
+      }
+
+      return new Song(file, modified(file), grid, seconds > 0.0 ? seconds : 60.0);
    }
 
    private static Path musicFile() {
@@ -137,6 +224,8 @@ public final class HighlightReelScreen extends FlatScreen {
       if (plan == null || plan.stream().anyMatch(c -> !Files.isRegularFile(c.file()))) {
          choose();
       }
+
+      readSong();
 
       int x = this.width / 2 - 152;
       int y = 22;
@@ -156,6 +245,10 @@ public final class HighlightReelScreen extends FlatScreen {
       }).dimensions(x, y + 22, 150, 20).setting().build());
       this.addDrawableChild(FlatButton.of(Text.literal("Music: " + music.label), b -> {
          music = Music.values()[(music.ordinal() + 1) % Music.values().length];
+         if (!planEdited) {
+            choose();
+         }
+
          this.clearAndInit();
       }).dimensions(x + 154, y + 22, 150, 20).setting().build());
       int percent = (int)Math.round(GAME_VOLUMES[gameVolume] * 100);
@@ -230,6 +323,7 @@ public final class HighlightReelScreen extends FlatScreen {
 
       plan.add(to, plan.remove(selected));
       selected = to;
+      planEdited = true;
       this.keepVisible();
       this.clearAndInit();
    }
@@ -238,6 +332,7 @@ public final class HighlightReelScreen extends FlatScreen {
       if (selected >= 0 && selected < plan.size()) {
          plan.remove(selected);
          selected = Math.min(selected, plan.size() - 1);
+         planEdited = true;
          this.clearAndInit();
       }
    }
@@ -256,6 +351,7 @@ public final class HighlightReelScreen extends FlatScreen {
       HighlightReel.Clip spare = this.spare();
       if (spare != null && selected >= 0 && selected < plan.size()) {
          plan.set(selected, spare);
+         planEdited = true;
          this.clearAndInit();
       }
    }
@@ -311,6 +407,9 @@ public final class HighlightReelScreen extends FlatScreen {
          config.reelMusicFile = chosen;
          String error = KillClipperClient.instance().saveSettings(config);
          status = error.isEmpty() ? "" : error;
+         if (!planEdited) {
+            choose();
+         }
       }
 
       this.clearAndInit();
@@ -368,15 +467,14 @@ public final class HighlightReelScreen extends FlatScreen {
             case NONE -> null;
          };
          if (job.music() == Music.OWN) {
-            status = "Finding the beat of your music...";
-            BeatDetector.Grid found = BeatDetector.detect(job.ffmpeg(), song);
-            if (found != null) {
-               grid = found;
-               KillClipperClient.LOGGER.info("Highlight reel: {} is {} BPM, first bar at {} s, starting at {} s", song.getFileName(),
-                  String.format(Locale.ROOT, "%.1f", found.bpm()), String.format(Locale.ROOT, "%.2f", found.downbeat()), String.format(Locale.ROOT, "%.2f", found.start()));
-            } else {
-               KillClipperClient.LOGGER.info("Highlight reel: no steady beat found in {}; cutting at 128 BPM", song.getFileName());
+            Song known = HighlightReelScreen.song;
+            if (known == null || !known.matches(song)) {
+               status = "Finding the beat of your music...";
+               known = analyse(job.ffmpeg(), song);
+               HighlightReelScreen.song = known;
             }
+
+            grid = known.grid();
          }
 
          status = "Reading " + job.clips().size() + " clips...";
@@ -395,17 +493,38 @@ public final class HighlightReelScreen extends FlatScreen {
             throw new IOException("none of the clips could be read");
          }
 
+         // Loading screens: clips from now on say where they were; older ones are checked by picture around the kills.
+         status = "Checking the clips for loading screens...";
+         Map<HighlightReel.Clip, List<LoadingScreens.Span>> avoid = new HashMap<>();
+         double preRoll = job.config().preRollMs / 1000.0;
+         double postRoll = job.config().postRollMs / 1000.0;
+         for (Map.Entry<HighlightReel.Clip, HighlightReel.Info> entry : infos.entrySet()) {
+            HighlightReel.Clip clip = entry.getKey();
+            if (clip.away() != null) {
+               avoid.put(clip, clip.away());
+               continue;
+            }
+
+            double[] window = HighlightReel.scanWindow(clip, entry.getValue(), preRoll, postRoll, grid);
+            List<LoadingScreens.Span> found = LoadingScreens.scan(job.ffmpeg(), clip.file(), window[0], window[1]);
+            if (!found.isEmpty()) {
+               KillClipperClient.LOGGER.info("Highlight reel: {} shows a loading screen at {}; leaving it out", clip.file().getFileName(), found);
+            }
+
+            avoid.put(clip, found);
+         }
+
          double t = HighlightReel.transitionSeconds(job.transition(), grid);
          List<ReelAngles.Shot> shots = job.replays() ? shots(job, infos, grid, t) : List.of();
          BeatDetector.Grid beat = grid;
          Path music = song;
          if (shots.isEmpty()) {
-            render(job, infos, beat, music, t, Map.of());
+            render(job, infos, avoid, beat, music, t, Map.of());
          } else {
             status = "Filming instant replays...";
             MinecraftClient.getInstance().execute(() -> ReelAngles.start(shots, filmed -> CompletableFuture.runAsync(() -> {
                try {
-                  render(job, infos, beat, music, t, filmed);
+                  render(job, infos, avoid, beat, music, t, filmed);
                } catch (Exception e) {
                   fail(e);
                }
@@ -440,8 +559,8 @@ public final class HighlightReelScreen extends FlatScreen {
       return shots;
    }
 
-   private static void render(Job job, Map<HighlightReel.Clip, HighlightReel.Info> infos, BeatDetector.Grid grid, Path music, double t,
-      Map<Path, Path> filmed) throws Exception {
+   private static void render(Job job, Map<HighlightReel.Clip, HighlightReel.Info> infos, Map<HighlightReel.Clip, List<LoadingScreens.Span>> avoid,
+      BeatDetector.Grid grid, Path music, double t, Map<Path, Path> filmed) throws Exception {
       ClipConfig config = job.config();
       List<HighlightReel.Clip> clips = job.clips().stream().filter(infos::containsKey).toList();
       List<HighlightReel.Segment> segments = new ArrayList<>();
@@ -452,13 +571,16 @@ public final class HighlightReelScreen extends FlatScreen {
       for (int i = 0; i < clips.size(); i++) {
          HighlightReel.Clip clip = clips.get(i);
          HighlightReel.Info info = infos.get(clip);
-         segments.add(HighlightReel.segment(clip, info, config.preRollMs / 1000.0, config.postRollMs / 1000.0, grid, HighlightReel.role(i, clips.size()), t));
+         segments.add(HighlightReel.segment(clip, info, config.preRollMs / 1000.0, config.postRollMs / 1000.0, grid, HighlightReel.role(i, clips.size()), t,
+            avoid.getOrDefault(clip, List.of())));
          kills += clip.kills();
          bestStreak = Math.max(bestStreak, clip.kills());
          Path replay = filmed.get(clip.file());
          HighlightReel.Info replayInfo = replay == null ? null : HighlightReel.probe(job.ffmpeg(), replay);
          if (replayInfo != null && replayInfo.seconds() > 0.5) {
-            segments.add(HighlightReel.replaySegment(replay, replayInfo, grid, t));
+            // The replay's first frames can still be its world appearing: check it like an old clip.
+            List<LoadingScreens.Span> replayAvoid = LoadingScreens.scan(job.ffmpeg(), replay, 0.0, replayInfo.seconds());
+            segments.add(HighlightReel.replaySegment(replay, replayInfo, grid, t, replayAvoid));
          }
 
          // The reel is as big as the biggest clip; smaller ones are scaled up to match.
@@ -561,7 +683,9 @@ public final class HighlightReelScreen extends FlatScreen {
 
    /** A guess before the clips are read. */
    private static double estimate() {
-      return plan.stream().mapToDouble(HighlightReel::estimate).sum();
+      Song known = ownSong();
+      BeatDetector.Grid grid = known == null ? BeatDetector.builtIn() : known.grid();
+      return plan.stream().mapToDouble(c -> HighlightReel.estimate(c, grid)).sum();
    }
 
    /** One line of the list: when, what, and what makes it special. */
@@ -639,6 +763,14 @@ public final class HighlightReelScreen extends FlatScreen {
       }
 
       String line = ReelAngles.running() ? ReelAngles.status() : working && progress > 0.0 ? status + " " + (int)(progress * 100) + "%" : status;
+      Song known = ownSong();
+      if (line.isEmpty() && music == Music.OWN && songReading != null) {
+         line = "Listening to your music for the beat...";
+      } else if (line.isEmpty() && known != null && !plan.isEmpty()) {
+         line = String.format(Locale.ROOT, "Your music: %.0f BPM, %s cuts on the beat. One click on Make does the rest.", known.grid().bpm(),
+            HighlightReel.pace(known.grid()).name());
+      }
+
       if (line.isEmpty() && !plan.isEmpty()) {
          Ui.centered(context, this.textRenderer, FlatButton.trim(this.textRenderer, "One click on Make does the rest. Double-click a clip to watch it.", this.width - 20),
             this.width / 2, barTop - 6, Ui.fade(Ui.FAINT, alpha));

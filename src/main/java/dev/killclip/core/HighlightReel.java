@@ -54,15 +54,34 @@ public final class HighlightReel {
    private HighlightReel() {
    }
 
-   /** A saved kill clip: when it was made, how many kills are in it and, for clips from v1.14 on, what each kill was. */
-   public record Clip(Path file, long timeMs, int kills, List<ClipMeta.Kill> moments) {
+   /**
+    * A saved kill clip: when it was made, how many kills are in it and, for clips from v1.14 on, what each kill was.
+    * {@code away} lists where the game showed no fight (loading screens, a world switch) for clips from v1.16 on;
+    * it is null for older clips, whose pictures are checked instead.
+    */
+   public record Clip(Path file, long timeMs, int kills, List<ClipMeta.Kill> moments, List<LoadingScreens.Span> away) {
       public Clip(Path file, long timeMs, int kills) {
-         this(file, timeMs, kills, List.of());
+         this(file, timeMs, kills, List.of(), null);
+      }
+
+      public Clip(Path file, long timeMs, int kills, List<ClipMeta.Kill> moments) {
+         this(file, timeMs, kills, moments, null);
       }
 
       public Clip {
          moments = List.copyOf(moments);
+         away = away == null ? null : List.copyOf(away);
          kills = Math.max(kills, moments.size());
+      }
+
+      /** The first and last kill, in the video's seconds, or the estimate from the clip settings for older clips. */
+      public double[] killSpan(double videoSeconds, double preRoll, double postRoll) {
+         if (!this.moments.isEmpty()) {
+            return new double[]{this.moments.getFirst().at(), this.moments.getLast().at()};
+         }
+
+         double last = Math.max(0.0, Math.min(videoSeconds, videoSeconds - postRoll));
+         return new double[]{this.kills > 1 ? Math.min(preRoll, last) : last, last};
       }
    }
 
@@ -208,8 +227,7 @@ public final class HighlightReel {
          for (Path file : files.filter(Files::isRegularFile).toList()) {
             Clip clip = clip(file, Files.getLastModifiedTime(file).toMillis());
             if (clip != null) {
-               List<ClipMeta.Kill> moments = ClipMeta.read(file);
-               clips.add(moments.isEmpty() ? clip : new Clip(file, clip.timeMs(), clip.kills(), moments));
+               clips.add(new Clip(file, clip.timeMs(), clip.kills(), ClipMeta.read(file), ClipMeta.readAway(file)));
             }
          }
       }
@@ -282,12 +300,26 @@ public final class HighlightReel {
       return (clip.kills() > 1 ? 5 : 3) * ReelMusic.BAR_SECONDS;
    }
 
+   /** Roughly how long a clip lasts in a reel cut to {@code grid}. */
+   public static double estimate(Clip clip, BeatDetector.Grid grid) {
+      return pace(grid).clipSeconds(clip.kills());
+   }
+
    /**
     * The clips for the reel, in the order they play. {@code max} above 0 takes that many of the best; 0 picks
     * automatically: every clip good enough next to the best one (at least three), up to about a minute of reel.
     * Of clips from the same fight only the best is used.
     */
    public static List<Clip> pick(List<Clip> candidates, int max) {
+      return pick(candidates, max, AUTO_TARGET_SECONDS, BeatDetector.builtIn());
+   }
+
+   /**
+    * Like {@link #pick(List, int)}, but an automatic pick fills {@code targetSeconds} of reel cut to {@code grid}.
+    * A target longer than the usual minute (the length of your own song) keeps every different fight until the song
+    * is full, best first, instead of only the ones close to the best.
+    */
+   public static List<Clip> pick(List<Clip> candidates, int max, double targetSeconds, BeatDetector.Grid grid) {
       List<Clip> ranked = new ArrayList<>(candidates);
       ranked.sort(Comparator.comparingDouble(HighlightReel::score).reversed().thenComparing(Comparator.comparingLong(Clip::timeMs).reversed()));
       List<Clip> chosen = new ArrayList<>();
@@ -301,16 +333,18 @@ public final class HighlightReel {
          chosen = new ArrayList<>(chosen.subList(0, Math.min(max, chosen.size())));
       } else if (!chosen.isEmpty()) {
          double best = score(chosen.getFirst());
+         double share = targetSeconds > AUTO_TARGET_SECONDS + 1.0 ? 0.0 : AUTO_MIN_SHARE;
          List<Clip> kept = new ArrayList<>();
          double total = 0.0;
          for (Clip clip : chosen) {
-            boolean goodEnough = kept.size() < 3 || score(clip) >= best * AUTO_MIN_SHARE;
-            if (!goodEnough || total + estimate(clip) > AUTO_TARGET_SECONDS && kept.size() >= 3) {
+            boolean goodEnough = kept.size() < 3 || score(clip) >= best * share;
+            double length = estimate(clip, grid);
+            if (!goodEnough || total + length > targetSeconds && kept.size() >= 3) {
                break;
             }
 
             kept.add(clip);
-            total += estimate(clip);
+            total += length;
          }
 
          chosen = kept;
@@ -319,7 +353,10 @@ public final class HighlightReel {
       return order(chosen);
    }
 
-   /** Best clip first (the hook), second best last (the finale), the rest in the order they happened. */
+   /**
+    * Best clip first (the hook), second best last (the finale), the rest in the order they happened, but with the
+    * streaks spread evenly between the single kills so the big moments don't bunch up in one part of the song.
+    */
    public static List<Clip> order(List<Clip> clips) {
       if (clips.size() < 2) {
          return new ArrayList<>(clips);
@@ -335,9 +372,40 @@ public final class HighlightReel {
       middle.sort(Comparator.comparingLong(Clip::timeMs));
       List<Clip> ordered = new ArrayList<>();
       ordered.add(hook);
-      ordered.addAll(middle);
+      ordered.addAll(spread(middle));
       ordered.add(finale);
       return ordered;
+   }
+
+   /**
+    * Places the streaks evenly among the single kills, each group keeping the order it happened in: with 2 streaks
+    * and 6 singles the streaks land about a third and two thirds of the way through.
+    */
+   static List<Clip> spread(List<Clip> clips) {
+      List<Clip> streaks = clips.stream().filter(c -> c.kills() > 1).toList();
+      List<Clip> singles = clips.stream().filter(c -> c.kills() <= 1).toList();
+      if (streaks.isEmpty() || singles.isEmpty()) {
+         return new ArrayList<>(clips);
+      }
+
+      List<Clip> out = new ArrayList<>();
+      int s = 0;
+      int total = clips.size();
+      for (int i = 0; i < streaks.size(); i++) {
+         // Where this streak's slot falls: evenly spaced, centred in its share of the reel.
+         int slot = (int)Math.round((i + 0.5) * total / streaks.size() - 0.5);
+         while (out.size() < slot && s < singles.size()) {
+            out.add(singles.get(s++));
+         }
+
+         out.add(streaks.get(i));
+      }
+
+      while (s < singles.size()) {
+         out.add(singles.get(s++));
+      }
+
+      return out;
    }
 
    /** The role of the clip at {@code index} of {@code count}: a single clip gets the finale's slow motion. */
@@ -345,9 +413,43 @@ public final class HighlightReel {
       return index == count - 1 ? Role.FINALE : index == 0 ? Role.HOOK : Role.NORMAL;
    }
 
-   /** The length the reel is cut in: a bar, or half a bar for slow songs so clips don't drag. */
+   /** Songs at least this fast get quick cuts. */
+   public static final double FAST_BPM = 140.0;
+   /** Songs slower than this get long, unhurried cuts. */
+   public static final double SLOW_BPM = 100.0;
+
+   /**
+    * How fast the reel cuts, from the tempo of the music. {@code unit} is the length everything is counted in (a bar
+    * or half a bar), {@code lead} how many units run up to a kill, {@code maxLead} the most a streak may take, and
+    * {@code after} how many units follow the kill. Fast songs cut every half bar with a short run-up; slow songs
+    * let each clip play for whole bars.
+    */
+   public record Pace(String name, double unit, int lead, int maxLead, int after) {
+      /** Roughly how long a clip lasts in the reel. */
+      public double clipSeconds(int kills) {
+         return this.unit * (kills > 1 ? Math.min(this.maxLead, this.lead + 2) + this.after : this.lead + this.after);
+      }
+   }
+
+   public static Pace pace(BeatDetector.Grid grid) {
+      double bpm = grid.bpm();
+      double bar = grid.bar();
+      if (bpm >= FAST_BPM) {
+         double unit = bar / 2.0;
+         return new Pace("fast", unit, 3, Math.max(3, (int)Math.ceil(10.0 / unit)), 1);
+      }
+
+      if (bpm < SLOW_BPM) {
+         double unit = bar <= 3.4 ? bar : bar / 2.0;
+         return new Pace("slow", unit, 2, Math.max(2, (int)Math.ceil(14.0 / unit)), 1);
+      }
+
+      return new Pace("medium", bar, 2, 7, 1);
+   }
+
+   /** The length the reel is cut in: half a bar for fast songs, a bar otherwise (half a bar for very slow ones). */
    public static double unit(BeatDetector.Grid grid) {
-      return grid.bar() <= 2.4 ? grid.bar() : grid.bar() / 2.0;
+      return pace(grid).unit();
    }
 
    /** The transition time, a whole number of half beats so it moves with the music. */
@@ -394,11 +496,16 @@ public final class HighlightReel {
     * Which parts of a clip go in the reel and at what speed. A clip runs from {@code preRoll} seconds before its first
     * kill to {@code postRoll} after its last, so without saved kill times the last kill is near the end.
     *
-    * <p>The reel's clock runs in whole units (bars): the lead-up, then two beats sped up into the kill, which lands
-    * on a bar line, then one more unit after it ({@code transition} extra for the crossfade). The finale also drops
-    * into slow motion on the kill and holds a unit longer. A streak gets all its kills, up to seven units before the last.
+    * <p>The reel's clock runs in whole units ({@link #pace}): the lead-up, then two beats sped up into the kill, which
+    * lands on a unit line, then the units after it ({@code transition} extra for the crossfade). The finale also drops
+    * into slow motion on the kill. A streak gets all its kills, up to the pace's longest lead-up.
+    *
+    * <p>Nothing is taken from inside or across {@code avoid} (loading screens, a world switch): the lead-up starts
+    * after the last one before the kills, and the rest stops before the next one after them. If that leaves too
+    * little after the kill, the end is slowed down, then its last clean frame is held.
     */
-   public static Segment segment(Clip clip, Info info, double preRoll, double postRoll, BeatDetector.Grid grid, Role role, double transition) {
+   public static Segment segment(Clip clip, Info info, double preRoll, double postRoll, BeatDetector.Grid grid, Role role, double transition,
+      List<LoadingScreens.Span> avoid) {
       double length = info.seconds();
       List<Double> times = new ArrayList<>();
       boolean exact = !clip.moments().isEmpty();
@@ -407,33 +514,37 @@ public final class HighlightReel {
             times.add(Math.max(0.0, Math.min(length, kill.at())));
          }
       } else {
-         double last = Math.max(0.0, Math.min(length, length - postRoll));
+         double[] span = clip.killSpan(length, preRoll, postRoll);
          if (clip.kills() > 1) {
-            times.add(Math.min(preRoll, last));
+            times.add(span[0]);
          }
 
-         times.add(last);
+         times.add(span[1]);
       }
 
-      double unit = unit(grid);
+      Pace pace = pace(grid);
+      double unit = pace.unit();
       double beat = grid.beat();
       double kill = times.getLast();
+      double[] clear = LoadingScreens.clear(avoid == null ? List.of() : avoid, times.getFirst(), kill, length);
+      double floor = clear[0];
+      double ceil = Math.min(length, clear[1]);
       boolean finale = role == Role.FINALE;
-      double lead = finale ? Math.min(SLOW_MO_LEAD, kill) : 0.0;
+      double lead = finale ? Math.min(SLOW_MO_LEAD, kill - floor) : 0.0;
       double cutAt = kill - lead;
-      int preUnits = 2;
+      int preUnits = pace.lead();
       if (times.size() > 1) {
-         preUnits = (int)Math.max(2, Math.min(7, Math.ceil((kill - times.getFirst() + 2.5) / unit)));
+         preUnits = (int)Math.max(pace.lead(), Math.min(pace.maxLead(), Math.ceil((kill - times.getFirst() + 2.5) / unit)));
       }
 
-      double rampSource = Math.min(2.0 * beat * RAMP_SPEED, cutAt);
+      double rampSource = Math.max(0.0, Math.min(2.0 * beat * RAMP_SPEED, cutAt - floor));
       double rampOut = rampSource / RAMP_SPEED;
       double before = cutAt - rampSource;
-      while (preUnits > 1 && preUnits * unit - rampOut > before + 1e-9) {
+      while (preUnits > 1 && preUnits * unit - rampOut > before - floor + 1e-9) {
          preUnits--;
       }
 
-      double normalOut = Math.max(0.0, Math.min(preUnits * unit - rampOut, before));
+      double normalOut = Math.max(0.0, Math.min(preUnits * unit - rampOut, before - floor));
       List<Piece> pieces = new ArrayList<>();
       if (normalOut > 0.01) {
          pieces.add(new Piece(before - normalOut, normalOut, 1.0));
@@ -445,15 +556,15 @@ public final class HighlightReel {
 
       double at = cutAt;
       if (finale) {
-         double slowSource = Math.min(unit * SLOW_MO, Math.max(0.05, length - at));
+         double slowSource = Math.min(unit * SLOW_MO, Math.max(0.05, ceil - at));
          pieces.add(new Piece(at, slowSource, SLOW_MO));
          at += slowSource;
       }
 
-      // One unit after the kill (and the crossfade). A clip that ends too soon is slowed down to fill it, so the
-      // next cut still lands on the beat.
-      double wanted = unit + transition;
-      double available = Math.max(0.05, length - at);
+      // The units after the kill (and the crossfade). A clip that ends too soon, or is cut short by a loading screen,
+      // is slowed down to fill them, so the next cut still lands on the beat.
+      double wanted = pace.after() * unit + transition;
+      double available = Math.max(0.05, ceil - at);
       double source = Math.min(available, wanted);
       double speed = source < wanted ? Math.max(0.5, source / wanted) : 1.0;
       pieces.add(new Piece(at, source, speed));
@@ -464,9 +575,10 @@ public final class HighlightReel {
          pieces.add(new Piece(at + source - frame, frame, frame / missing));
       }
 
-      if (pieces.getFirst().start() < 0.0) {
+      if (pieces.getFirst().start() < floor) {
          Piece first = pieces.removeFirst();
-         pieces.addFirst(new Piece(0.0, first.length() + first.start(), first.speed()));
+         double cut = floor - first.start();
+         pieces.addFirst(new Piece(floor, Math.max(0.01, first.length() - cut), first.speed()));
       }
 
       Segment plain = new Segment(clip.file(), pieces, info.audio(), List.of(), false);
@@ -489,6 +601,26 @@ public final class HighlightReel {
       return new Segment(clip.file(), pieces, info.audio(), popups, false);
    }
 
+   /** {@link #segment(Clip, Info, double, double, BeatDetector.Grid, Role, double, List)} avoiding the clip's saved loading screens. */
+   public static Segment segment(Clip clip, Info info, double preRoll, double postRoll, BeatDetector.Grid grid, Role role, double transition) {
+      return segment(clip, info, preRoll, postRoll, grid, role, transition, clip.away());
+   }
+
+   /**
+    * Which seconds of a clip to check for loading screens by picture: the most the reel could take around the kills.
+    * Empty for clips whose loading screens were tracked while recording.
+    */
+   public static double[] scanWindow(Clip clip, Info info, double preRoll, double postRoll, BeatDetector.Grid grid) {
+      if (clip.away() != null) {
+         return new double[]{0.0, 0.0};
+      }
+
+      double[] kills = clip.killSpan(info.seconds(), preRoll, postRoll);
+      Pace pace = pace(grid);
+      double from = Math.max(0.0, Math.min(kills[0], kills[1] - pace.maxLead() * pace.unit()) - 1.0);
+      return new double[]{from, Math.max(0.0, info.seconds() - from)};
+   }
+
    /** Keeps the planned segment fields but with the built-in tempo; for callers and tests from before beat detection. */
    public static Segment segment(Clip clip, Info info, double preRoll, double postRoll, double transition) {
       return segment(clip, info, preRoll, postRoll, BeatDetector.builtIn(), Role.NORMAL, transition);
@@ -496,13 +628,29 @@ public final class HighlightReel {
 
    /**
     * An instant replay of a kill from another camera, filmed from the fight's replay already in slow motion: two
-    * units long, stretched a little if the video is short.
+    * units long, stretched a little if the video is short. The kill sits about two thirds of the way in; loading
+    * frames (the replay's world still appearing, or the end of the fight's log) before or after it are left out.
     */
-   public static Segment replaySegment(Path video, Info info, BeatDetector.Grid grid, double transition) {
+   public static Segment replaySegment(Path video, Info info, BeatDetector.Grid grid, double transition, List<LoadingScreens.Span> avoid) {
       double wanted = 2.0 * unit(grid) + transition;
-      double source = Math.min(info.seconds(), wanted);
+      double kill = info.seconds() * 0.65;
+      double[] clear = LoadingScreens.clear(avoid == null ? List.of() : avoid, kill, kill, info.seconds());
+      double start = Math.max(clear[0], Math.min(kill - wanted * 0.6, clear[1] - wanted));
+      start = Math.max(0.0, start);
+      double source = Math.max(0.05, Math.min(clear[1] - start, wanted));
       double speed = source < wanted ? Math.max(0.5, source / wanted) : 1.0;
-      return new Segment(video, List.of(new Piece(0.0, source, speed)), info.audio(), List.of(new Popup(0.05, "REPLAY", "", ReelText.Style.REPLAY)), true);
+      List<Piece> pieces = new ArrayList<>(List.of(new Piece(start, source, speed)));
+      double missing = wanted - source / speed;
+      if (missing > 0.01) {
+         double frame = Math.min(0.04, source);
+         pieces.add(new Piece(start + source - frame, frame, frame / missing));
+      }
+
+      return new Segment(video, pieces, info.audio(), List.of(new Popup(0.05, "REPLAY", "", ReelText.Style.REPLAY)), true);
+   }
+
+   public static Segment replaySegment(Path video, Info info, BeatDetector.Grid grid, double transition) {
+      return replaySegment(video, info, grid, transition, List.of());
    }
 
    /** How long the finished reel is. */
